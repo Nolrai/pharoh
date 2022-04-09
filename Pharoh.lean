@@ -1,8 +1,7 @@
 import Init.Control
+import Mathlib.Data.Fin.Basic
 
 namespace lambda
-
-abbrev ℕ := Nat
 
 inductive lambda (V : Type u) where
   | Var (_ : V)
@@ -112,34 +111,12 @@ def app : Term → Term → Term :=
 
 def two : Term := app (app add one) one
 
-inductive Code where
-  | nat : Code
-  | arr : Code → Code → Code
+inductive NatAux where
+  | nat : ℕ → NatAux
+  | suc : NatAux
 
-open Code
+open NatAux
 
-def toType : Code → Type
-  | nat => ℕ
-  | arr x y => toType x → toType y
+abbrev nat' n := Var (nat n)
+abbrev suc' := Var suc
 
-def decideEqCode : ∀ (x y : Code), Decidable (x = y)
-  | nat, nat => isTrue rfl
-  | arr x y, arr z w =>
-    match decideEqCode x z, decideEqCode y w with
-    | isTrue h, isTrue h' => isTrue (by rw [h, h'])
-    | isFalse h, _ => isFalse $ λ h' => h (by cases h'; rfl)
-    | _, isFalse h => isFalse $ λ h' => h (by cases h'; rfl)
-  | arr _ _, nat => isFalse (λ h => by cases h)
-  | nat, arr _ _ => isFalse (λ h => by cases h)
-
-instance : DecidableEq Code := decideEqCode
-
-structure Tagged : Type where
-  (type : Code)
-  (value : toType type)
-
-def evalTerm : Code → lambda Tagged → OptionM Tagged
-  | c, Var {type := c', value := v} => do
-    guard (c = c') 
-    pure {type := c', value := v}
-  | nat, App f args => evalTerm 
