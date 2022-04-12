@@ -8,20 +8,39 @@ open Option
 def delay (n' : Option (α × ℕ)) : StateT ℕ OptionM α :=
   match n' with
   | none => failure
-  | some (a, n) => do
-    let k <- get
-    guard (n ≤ k)
-    set (k - n)
-    pure a
+  | some (a, n) => 
+    λ k =>
+      if n ≤ k
+        then some (a, n - k)
+        else none
 
-def delay_some {α} (a : α) : 
-  delay (some (a, n)) = (do
-    let k <- get
-    guard (n ≤ k)
-    set (k - n)
-    pure a
-    )
-  := rfl
+def delay_some_le {α} (a : α) (h : n ≤ k) : 
+  delay (some (a, n)) k = some (a, k - n) := by
+  have : delay (some (a, n)) = 
+    λ k =>
+      if n ≤ k
+        then some (a, n - k)
+        else none
+     := rfl
+  rw [this]
+  simp
+  rw [if_pos h]
+
+def delay_some_gt {α} (a : α) (h : n > k) : 
+  delay (some (a, n)) k = none := by
+  have : delay (some (a, n)) = 
+    λ k =>
+      if n ≤ k
+        then some (a, n - k)
+        else none
+     := rfl
+  rw [this]
+  simp
+  rw [if_neg]
+  rw [Nat.not_le]
+  apply h
+
+lemma delay_none {γ} : delay (none  : Option (γ × ℕ)) = failure := funext (λ x => rfl)
 
 def Delay α := { x : StateT ℕ OptionM α // ∃ y, x = delay y}
 
@@ -61,18 +80,23 @@ instance : Functor Delay := {
 
 def Delay.pure (a : α) : Delay α := ⟨delay (some (a, 0)), ⟨some (a, 0), rfl⟩⟩
 
+lemma failure_bind {M : Type → Type} [Alternative M] [Monad M] (m : β → M α) : (failure >>= m) = failure :=
+  sorry
+
+lemma delay_bind {f : α → Delay β} : ∀ {x}, ∃ y, delay x >>= (Subtype.val ∘ f) = delay y
+  | none => by
+    exists (none : Option (β × ℕ))
+    rw [delay_none, delay_none, failure_bind]
+  | some (a, n) => 
+    match (f a).property with
+    | ⟨none, h⟩ => by 
+      exists (none : Option (β × ℕ))
+      
+      
+    
+
 def Delay.bind (d : Delay α) (f : α → Delay β) : Delay β :=
-  ⟨(d.val.bind (Subtype.val ∘ f)), by 
-    let ⟨w, h⟩ := d.property
-    rw [h]
-    clear h
-    cases w with 
-    | some y =>
-      have H : ∀ {s m} (x : StateT s m α) (f : α → StateT s m β) [Monad m], StateT.bind x f = fun s => do {let (a, s) ← x s; f a s} := λ x f => rfl
-      rw [H]; clear H
-      simp
-       
-    | none => _
+  ⟨(d.val >>= (Subtype.val ∘ f)), sorry
   ⟩ 
 
 instance : Monad Delay := {
