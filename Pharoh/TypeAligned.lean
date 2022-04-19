@@ -1,5 +1,5 @@
 import Mathlib.Data.List.Basic
-import Pharoh.Queue
+import Std.Data.Queue
 
 namespace List
 
@@ -46,10 +46,58 @@ lemma TypeAligned_reverse (l : List α) : ∀ {τ σ : Ty}, l.TypeAligned dom co
 
 end List
 
-namespace Queue
+namespace Std.Queue
 
-def TypeAligned {Ty} (dom cod : α → Ty) (τ σ : Ty) (q : Queue α) : Prop :=
-  ∃ ω : Ty, q.back.TypeAligned cod dom τ ω ∧ q.front.TypeAligned dom cod σ ω
+@[simp]
+lemma enqueue_def (q : Queue α) : q.enqueue x = { q with eList := x::q.eList } := rfl
+
+def TypeAligned {Ty} (dom cod : α → Ty) (τ ω : Ty) (q : Queue α) : Prop :=
+  ∃ σ : Ty, q.eList.TypeAligned dom cod τ σ ∧ q.dList.TypeAligned cod dom ω σ  
+
+lemma TypeAligned_def {Ty} {dom cod : α → Ty} {τ ω : Ty} {q : Queue α} :
+  TypeAligned dom cod τ ω q = ∃ σ : Ty, q.eList.TypeAligned dom cod τ σ ∧ q.dList.TypeAligned cod dom ω σ := rfl
+
+lemma TypeAligned_push {Ty} (dom cod : α → Ty) {ω : Ty} (x : α) (q : Queue α) :
+  TypeAligned dom cod (cod x) ω q → TypeAligned dom cod (dom x) ω (q.enqueue x) := by
+  intros h
+  cases q
+  simp
+  rw [TypeAligned_def] at *
+  have ⟨ω, left, right⟩ := h
+  exists ω
+  simp at *
+  exact (And.intro left right)
+
+def slowAppend (p q : Queue α) : Queue α where
+  eList := p.eList ++ p.dList.reverse
+  dList := q.dList ++ q.eList.reverse
+
+@[simp]
+lemma slowAppend_def {p q : Queue α} : 
+  slowAppend p q = { eList := p.eList ++ p.dList.reverse, dList := q.dList ++ q.eList.reverse } := rfl
+
+lemma TypeAligned_append {p q : Queue α} {cod dom : α → Ty} : 
+  p.TypeAligned dom cod τ σ → 
+  q.TypeAligned dom cod σ ω → 
+  (p.slowAppend q).TypeAligned dom cod τ ω := by
+    intros pTA qTA
+    cases p with | mk peList pdList => 
+    cases q with | mk qeList qdList =>
+    simp
+    rw [TypeAligned_def] at *
+    have ⟨σ₀, pleft_, pright⟩ := pTA
+    have ⟨σ₁, qleft_, qright⟩ := qTA
+    simp at *
+    exists σ
+    constructor
+    
+    apply List.TypeAligned_append pleft_
+    apply List.TypeAligned_reverse
+    apply pright
+
+    apply List.TypeAligned_append qright
+    apply List.TypeAligned_reverse
+    apply qleft_
 
 end Queue
 
