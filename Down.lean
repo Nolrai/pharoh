@@ -18,10 +18,10 @@ instance : OfNat Down n := ⟨ofNat n⟩
 inductive mem : Down → Down → Prop :=
   | intro (f : ℕ → Down) (n) : mem (f n) (Limit f)
 
-def isToFrom x y (l : List α) := l.head? = some x ∧ l.last' = some y
+def isToFrom x y (l : List α) := l.head? = some y ∧ l.last' = some x
 
 def isChain (l : List Down) :=
-    ∀ n x' y', l.get? n = some x' → l.get? (n+1) = some y' -> mem x' y'
+    ∀ n x' y', l.get? n = some x' → l.get? (n+1) = some y' -> mem y' x'
 
 def le (x y : Down) := 
   ∃ l : List Down, isToFrom x y l ∧ isChain l
@@ -104,11 +104,11 @@ lemma le_trans_list_length_aux {y : α} {ys yss} : List.length (y :: ys :: yss) 
   apply Nat.le_add_left
 
 lemma le_trans_isToFrom
-  {x xs y ys : Down}
-  {xss yss : List Down}
-  (last_lxy : List.last' (x :: xs :: xss) = some y)
-  (last_lyz : List.last' (y :: ys :: yss) = some z)
-  : isToFrom x z (le_aux (x :: xs :: xss) (y :: ys :: yss)) := by
+  {y ys z zs : Down}
+  {yss zss : List Down}
+  (last_lxy : List.last' (y :: ys :: yss) = some x)
+  (last_lyz : List.last' (z :: zs :: zss) = some y)
+  : isToFrom x z (le_aux (z :: zs :: zss) (y :: ys :: yss)) := by
     apply And.intro
     rw [head_le_aux]
     simp
@@ -220,33 +220,21 @@ lemma le_trans {x y z} : le x y → le y z → le x z
         simp
         rw [← this]
         assumption
-    | _::xs::xss, _::ys::yss => by
+    | _::ys::yss, _::zs::zss  => by
       simp at head_lxy head_lyz
       cases head_lxy
       cases head_lyz
-      apply Exists.intro (le_aux (x::xs::xss) (y::ys::yss))
+      apply Exists.intro (le_aux (z::zs::zss) (y::ys::yss))
       apply And.intro
       apply le_trans_isToFrom last_lxy last_lyz
-      apply le_trans_isChain last_lxy lxy_isChain lyz_isChain
-
-lemma not_lt_Zero_aux (x : Down) (l : List Down) : ¬ isChain (l ++ [x, Zero]) := by
-  induction l with
-  | nil => 
-    simp
-    intros h
-    have h' := h 0 x Zero rfl rfl
-    cases h'
-  | cons y ys ys_ih =>
-    intros h
-    apply ys_ih
-    intros n a b getn getn_one
-    apply h (n+1)
-    rw [← getn]
-    simp
-    rw [← getn_one]
-    simp
+      apply le_trans_isChain last_lyz lyz_isChain lxy_isChain
 
 
+lemma not_mem_zero : ∀ a, ¬ mem a Zero
+  | a, h => by cases h
+
+lemma not_lt_Zero_aux (x : Down) (l : List Down) : ¬ isChain ([Zero, x] ++ l)
+  | h => not_mem_zero _ (h 0 Zero x rfl rfl)
 
 lemma le_refl : ∀ x, le x x 
   | x => ⟨[x], by
@@ -258,7 +246,7 @@ lemma le_refl : ∀ x, le x x
     simp at *
   ⟩
 
-lemma isChain_up (x : Down) (xs : List Down) : isChain (x :: xs) → isChain xs := by
+lemma isChain_down (x : Down) (xs : List Down) : isChain (x :: xs) → isChain xs := by
   intros h n x' y' getn getn_one
   apply h (n+1)
   rw [← getn]
@@ -266,58 +254,42 @@ lemma isChain_up (x : Down) (xs : List Down) : isChain (x :: xs) → isChain xs 
   rw [← getn_one]
   simp
 
-lemma not_mem_zero : ∀ a, ¬ mem a Zero
-  | a, h => by cases h
+lemma Zero_Chains : ∀ (l : List Down), l.head? = some Zero → isChain l → l = [Zero]
+  | [], l_head, l_isChain => by cases l_head
+  | [x], l_head, l_isChain => by simp at *; exact l_head
+  | x :: xs :: xss, l_head, l_isChain => by 
+    simp at *
+    cases l_head
+    exfalso
+    apply not_mem_zero xs
+    apply l_isChain 0 Zero xs rfl rfl
 
-lemma le_Zero (a : Down) (h : le a Zero) : a = Zero := 
-  have ⟨l, ⟨l_head, l_last⟩, l_isChain⟩ := h
-  by
-  apply some_ext
-  rw [← l_head]
-  clear l_head
-  induction l with
-  | nil => simp at l_last
-  | cons x xs xs_ih => 
-    cases xs with
-    | nil => 
-      simp at *
-      exact l_last
-    | cons xs xss =>
-        simp at *
-        have xs_eq_Zero : xs = Zero := by {apply xs_ih l_last; apply isChain_up _ _ l_isChain}
-        cases xs_eq_Zero
-        exfalso
-        apply not_mem_zero x
-        apply l_isChain 0 x Zero
-        simp
-        simp 
+lemma le_Zero : ∀ (a : Down) (h : le a Zero), a = Zero
+  | a, ⟨l, ⟨l_head, l_last⟩, l_isChain⟩ => 
+    have : l = [Zero] := Zero_Chains l l_head l_isChain
+    by
+    cases this
+    cases l_last
+    apply rfl
+
 lemma le_Zero_iff (a : Down) : le a Zero ↔ a = Zero where
   mpr h := by cases h; apply le_refl
   mp h := le_Zero a h
 
-lemma Zero_Chains_aux : ∀ n l, (l.length = n) → (l.last' = some Zero) → isChain l → l = [Zero]
-  | 0, [], rfl, l_last, l_isChain => by simp at l_last
-  | 1, [x], l_length, l_last, l_isChain => by
-    simp at l_last
-    rw [l_last]
-  | (n+2), x::xs::xss, l_length, l_last, l_isChain => by
-    simp at *
-    have : xs::xss = [Zero] := by 
-      apply (Zero_Chains_aux (n+1) (xs::xss))
-      simp; exact l_length
-      exact l_last
-      apply isChain_up x _ l_isChain
-    simp
-    rw [this] at l_isChain
-    apply not_mem_zero x
-    apply l_isChain 0 x Zero
-    simp
-    simp
-
-lemma Zero_Chains (l : List Down) : l.last' = Zero → isChain l → l = [Zero] := Zero_Chains_aux l.length l rfl
-
-
-    
+lemma lt_strongly_antisymm : ∀ a : Down, ¬ lt a a
+  | Zero, h => 
+    have ⟨l, ⟨l_head, l_last⟩, l_isChain, l_length⟩ := h
+    have : l = [Zero] := Zero_Chains l l_head l_isChain
+    by 
+    cases this
+    simp at l_length
+  | Limit f, h =>
+    have ⟨l, ⟨l_head, l_last⟩, l_isChain, l_length⟩ := h
+    by 
+      simp at *
+      cases l with
+      | nil => _
+      | cons x xs => _ 
 
 lemma lt_iff_le_not_le (a b : Down) : lt a b ↔ (le a b ∧ ¬(le b a)) where
   mp h := 
