@@ -316,11 +316,8 @@ lemma Zero_Chains_aux : ∀ n l, (l.length = n) → (l.last' = some Zero) → is
 
 lemma Zero_Chains (l : List Down) : l.last' = Zero → isChain l → l = [Zero] := Zero_Chains_aux l.length l rfl
 
-lemma lt_strongly_antisymm (a : Down) : ¬ lt a a := 
-  λ h => have ⟨l, ⟨l_head, l_last⟩, l_isChain⟩ := h
-  by
-  induction a with
-  | Zero => 
+
+    
 
 lemma lt_iff_le_not_le (a b : Down) : lt a b ↔ (le a b ∧ ¬(le b a)) where
   mp h := 
