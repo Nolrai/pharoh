@@ -1,4 +1,77 @@
 import Mathlib
+import Init.Data.Range
+
+lemma List.get?_succ (n : ℕ) (x : α) (xs : List α) : (x :: xs).get? (n + 1) = xs.get? n := by
+  simp
+
+def Sequence α := ℕ → α
+
+namespace Sequence
+
+def tail : Sequence α → Sequence α :=
+  λ s n => s (n + 1)
+
+@[simp]
+def tail_def (s : Sequence α) : s.tail n = s (n+1) := rfl
+
+def take : ℕ → (Sequence α) → List α 
+  | 0 => λ _ => []
+  | n + 1 => λ s => s 0 :: s.tail.take n
+
+@[simp]
+def take_zero (s : Sequence α) : s.take 0 = [] := rfl
+
+@[simp]
+def take_succ (s : Sequence α) : s.take (n + 1) = s 0 :: s.tail.take n := rfl
+
+lemma take_length : ∀ n (s : Sequence α), (s.take n).length = n
+  | 0, s => rfl
+  | (n+1), s => by
+    simp
+    apply take_length n
+
+@[simp]
+lemma get?_take (s : Sequence α) : ∀ n ix, ix < n → List.get? (s.take n) ix = some (s ix)
+  | 0, _, p => by exfalso; apply Nat.not_lt_zero _ p
+  | (Nat.succ n), 0, _ => by simp
+  | (Nat.succ (Nat.succ n)), (Nat.succ ix), p => by
+    rw [Sequence.take_succ]
+    rw [List.get?_succ, get?_take]
+    simp
+    rw [Nat.add_one] at *
+    apply Nat.lt_of_succ_lt_succ p
+
+end Sequence
+
+open Sequence
+
+def List.cycle : ∀ l : List α, l.length > 0 → Sequence α :=
+  λ l p n => l.get ⟨n % l.length, Nat.mod_lt _ p⟩
+
+@[simp]
+def Sequence.cycle_def' (l : List α) (p : l.length > 0) : 
+  l.cycle p n = l.get ⟨n % l.length, Nat.mod_lt _ p⟩ := rfl
+
+@[simp]
+def Sequence.cycle_def (l : List α) (p : l.length > 0) : 
+  l.cycle p = λ n => l.get ⟨n % l.length, Nat.mod_lt _ p⟩ := by
+  funext n
+  simp
+
+lemma List.length_init_aux : ∀ (n : ℕ) (l : List α), l.length = n → l.init.length = l.length - 1
+  | 0, [], _ => rfl
+  | 1, [x], _ => rfl
+  | (n+2), x :: xs :: xss, p => by
+    simp at *
+    rw [← Nat.add_one, ← Nat.add_one, Nat.add_sub_cancel]
+    simp
+    rw [length_init_aux (n+1) (xs :: xss)]
+    simp [← Nat.add_one, Nat.add_sub_cancel]
+    simp
+    exact p
+
+lemma List.length_init (l : List α) : l.init.length = l.length - 1 :=
+  l.length_init_aux l.length rfl
 
 inductive Down : Type (u + 1) where
   | Zero : Down
@@ -15,13 +88,23 @@ def ofNat : Nat → Down
 
 instance : OfNat Down n := ⟨ofNat n⟩
 
-inductive mem : Down → Down → Prop :=
-  | intro (f : ℕ → Down) (n) : mem (f n) (Limit f)
+def mem : Down → Down → Prop
+  | d, Limit f => ∃ n, d = f n
+  | d, Zero => False
+
+lemma mem_Limit : ∀ {d f}, mem d (Limit f) = ∃ n, d = f n := rfl
+
+@[simp]
+lemma mem_Zero : ∀ {d}, mem d Zero = False := rfl
 
 def isToFrom x y (l : List α) := l.head? = some y ∧ l.last' = some x
 
 def isChain (l : List Down) :=
     ∀ n x' y', l.get? n = some x' → l.get? (n+1) = some y' -> mem y' x'
+
+@[simp]
+lemma isChain_nil : isChain []
+  | n, x', y', x'h, y'h => by simp at *
 
 def le (x y : Down) := 
   ∃ l : List Down, isToFrom x y l ∧ isChain l
@@ -88,6 +171,211 @@ lemma get?_last : ∀ (l : List α), l.get? (l.length - 1) = l.last'
     apply get?_last_aux
     simp
     apply Nat.add_sub_cancel _ 1
+
+
+lemma not_mem_Zero : ∀ a, ¬ mem a Zero
+  | a, h => by cases h
+
+lemma not_lt_Zero_aux (x : Down) (l : List Down) : ¬ isChain ([Zero, x] ++ l)
+  | h => not_mem_Zero _ (h 0 Zero x rfl rfl)
+
+lemma le_refl : ∀ x, le x x 
+  | x => ⟨[x], by
+    intros
+    apply And.intro
+    apply ⟨rfl, rfl⟩
+    intros n x' y' x'h y'h
+    exfalso
+    simp at *
+  ⟩
+
+lemma isChain_down (x : Down) (xs : List Down) : isChain (x :: xs) → isChain xs := by
+  intros h n x' y' getn getn_one
+  apply h (n+1)
+  rw [← getn]
+  simp
+  rw [← getn_one]
+  simp
+
+lemma Zero_Chains : ∀ (l : List Down), l.head? = some Zero → isChain l → l = [Zero]
+  | [], l_head, l_isChain => by cases l_head
+  | [x], l_head, l_isChain => by simp at *; exact l_head
+  | x :: xs :: xss, l_head, l_isChain => by 
+    simp at *
+    cases l_head
+    exfalso
+    apply not_mem_Zero xs
+    apply l_isChain 0 Zero xs rfl rfl
+
+lemma le_Zero : ∀ (a : Down) (h : le a Zero), a = Zero
+  | a, ⟨l, ⟨l_head, l_last⟩, l_isChain⟩ => 
+    have : l = [Zero] := Zero_Chains l l_head l_isChain
+    by
+    cases this
+    cases l_last
+    apply rfl
+
+lemma le_Zero_iff (a : Down) : le a Zero ↔ a = Zero where
+  mpr h := by cases h; apply le_refl
+  mp h := le_Zero a h
+
+open Sequence
+
+lemma decending_chain_conditon : ∀ (s : Sequence Down), ¬ ∀ n, isChain (s.take n) := by
+  intros s
+  let h : ∃ a, s 0 = a := ⟨s 0, rfl⟩
+  cases h with | intro a ah =>
+  clear h
+  revert s
+  induction a with
+  
+  | Zero =>
+    intros s ah impossible
+    apply not_mem_Zero (s 1)
+    have h := impossible 2
+    simp at h
+    rw [ah] at h
+    apply h 0
+    simp
+    simp
+
+  | Limit elems elems_ih => 
+    intros s ah impossible
+    have h : mem (s 1) (Limit elems) := by 
+      apply (impossible 2 0)
+      simp
+      exact ah
+      simp
+    rw [mem_Limit] at h
+    cases h with | intro ix ix_h =>
+    simp
+    apply elems_ih ix (s.tail) ix_h
+    intros n
+    cases n with
+    | zero => simp
+    | succ n' => 
+      apply isChain_down (s 0)
+      have : Sequence.take (n'.succ.succ) s = (s 0 :: s.tail.take n'.succ) := rfl
+      rw [← this]
+      apply impossible
+
+lemma lt_strongly_antisymm'_aux : ∀ n, n ≥ 2 → n - 1 > 0
+  | Nat.succ (Nat.succ n), p => by
+    rw [← Nat.add_one]
+    rw [Nat.add_sub_cancel]
+    apply Nat.gt_of_not_le
+    apply Nat.not_lt_zero
+    
+lemma not_mem_self {a} : ¬ mem a a :=
+  by
+  induction a with
+  | Zero => simp
+  | Limit elems elems_ih =>
+    intros h
+    have h' := h
+    rw [mem_Limit] at h
+    have ⟨n, h⟩ := h
+    apply elems_ih n
+    rw [←h]
+    apply h'
+
+lemma List.get?_init {α} : ∀ (ix : ℕ) (l : List α) (ix_neq : ix ≠ l.init.length), l.get? ix = l.init.get? ix
+  | _, [], _ => rfl
+  | (n+1), [x], refl => rfl 
+  | 0, x::xs::xss, _ => rfl
+  | (n+1), x::xs::xss, ix_neq => by
+    match lt_trichotomy (n+1) (x::xs::xss).init.length with
+    | Or.inr (Or.inl h) => simp; exact (ix_neq h).elim
+    | (Or.inl h) => simp at *; apply get?_init; exact ix_neq
+    | Or.inr (Or.inr h) => simp at *; apply get?_init; exact ix_neq
+
+lemma List.head_init {α} : ∀ (l : List α), l.length > 1 → l.init.head? = l.head?
+  | x :: y :: l, p => by simp 
+  | [x], p => by simp at p
+  | [], p => by simp at p
+
+lemma lt_strongly_antisymm' (a : Down) : ¬ lt a a := 
+  λ h => 
+    have ⟨l, ⟨l_head, l_last⟩, l_isChain, l_length⟩ := h
+    have l_init_length : l.init.length > 1 :=
+      match l with
+      | [] => by simp at *
+      | [x] => by simp at *
+      | [x, y] => by
+        cases l_head; cases l_last
+        exfalso
+        apply not_mem_self (l_isChain 0 a a rfl rfl)
+      | _::_::_::_ => by 
+        simp at *
+        apply Nat.succ_lt_succ
+        rw [Nat.add_one]
+        apply Nat.zero_lt_succ
+    have l_init_length' : l.init.length > 0 := Nat.lt_trans Nat.zero_lt_one l_init_length 
+    have ⟨s, sh⟩ : ∃ s : Sequence Down, s = l.init.cycle l_init_length' := ⟨l.init.cycle l_init_length', rfl⟩
+    have neq_of_lt : ∀ n m : ℕ, n < m → n ≠ m := by
+      clear s sh
+      intros n m h
+      rw [lt_iff_le_not_le] at h
+      intros h'
+      cases h'
+      apply h.2
+      apply Nat.le_refl
+    by
+      apply decending_chain_conditon s
+      rw [sh]
+      intros n ix x' y' xh yh
+      cases Nat.decLt (ix + 1) n with
+      | isFalse h => 
+        exfalso
+        apply h; clear h
+        rw [List.get?_eq_some] at *
+        have h' := yh.1
+        rw [take_length] at h'
+        exact h'
+     
+      | isTrue ix_one_lt_n =>
+        have ix_lt_n : ix < n := by apply Nat.lt_trans (Nat.lt_succ_self ix) ix_one_lt_n 
+        rw [get?_take _ _ _ ix_lt_n] at xh
+        rw [get?_take _ _ _ ix_one_lt_n] at yh
+        have x'h := some_ext _ _ xh
+        have y'h := some_ext _ _ yh
+        rw [← y'h, ← x'h]
+        clear x' y' xh yh x'h y'h
+        rw [Sequence.cycle_def' l.init l_init_length', Sequence.cycle_def' l.init l_init_length']
+
+        apply l_isChain (ix % l.init.length)
+        case a =>
+          rw [← List.get?_eq_get, ← List.get?_init]
+          simp
+          apply neq_of_lt
+          apply Nat.mod_lt
+          apply l_init_length'
+        
+        rw [← List.get?_eq_get]
+          
+        rw [Nat.add_mod]
+          have : 1 % l.init.length = 1 := by apply Nat.mod_eq_of_lt l_init_length
+          rw [this]; clear this 
+          
+        have h : 
+          (ix % l.init.length + 1 < l.init.length) ∨ (ix % l.init.length + 1 = l.init.length) := 
+            le_iff_lt_or_eq.mp (Nat.succ_le_of_lt (Nat.mod_lt _ l_init_length'))
+        cases h with
+        | inl h =>
+          rw [← List.get?_init ]
+          apply congr_arg
+          apply Eq.symm
+          apply Nat.mod_eq_of_lt h
+          apply neq_of_lt
+          apply Nat.mod_lt
+          exact l_init_length'
+        | inr h =>
+          rw [h, List.length_init, get?_last, l_last]
+          rw [← List.length_init]
+          rw [Nat.mod_self, List.get?_zero, ← l_head]
+          apply Eq.symm
+          apply List.head_init 
+          apply l_length
 
 @[simp] 
 lemma last_le_aux : ∀ (l l' : List α), l'.length > 1 → (le_aux l l').last' = l'.last'
@@ -193,6 +481,19 @@ lemma le_trans_isChain
         rw [← h]
         apply le_refl
 
+lemma lt_trans : ∀ {x y z}, lt x y → lt y z → lt x z
+  | x, y, z, 
+    ⟨lxy, head_last_lxy, lxy_isChain, lxy_length⟩, 
+    ⟨lyz, head_last_lyz, lyz_isChain, lyz_length⟩ =>
+    have le_x_y : le x y := ⟨lxy, head_last_lxy, lxy_isChain⟩
+    have le_y_z : le y z := ⟨lyz, head_last_lyz, lyz_isChain⟩
+    by
+    
+
+lemma lt_strongly_antisymm : ∀ a b, lt a b → ¬ lt b a
+  | a, b, a_lt_b, b_lt_a => lt_strongly_antisymm' a (lt_trans a_lt_b b_lt_a)
+
+
 lemma le_trans {x y z} : le x y → le y z → le x z
   | ⟨lxy, ⟨head_lxy, last_lxy⟩, lxy_isChain⟩, ⟨lyz, ⟨head_lyz, last_lyz⟩, lyz_isChain⟩ =>
     match lxy, lyz with
@@ -230,78 +531,12 @@ lemma le_trans {x y z} : le x y → le y z → le x z
       apply le_trans_isChain last_lyz lyz_isChain lxy_isChain
 
 
-lemma not_mem_zero : ∀ a, ¬ mem a Zero
-  | a, h => by cases h
 
-lemma not_lt_Zero_aux (x : Down) (l : List Down) : ¬ isChain ([Zero, x] ++ l)
-  | h => not_mem_zero _ (h 0 Zero x rfl rfl)
-
-lemma le_refl : ∀ x, le x x 
-  | x => ⟨[x], by
-    intros
-    apply And.intro
-    apply ⟨rfl, rfl⟩
-    intros n x' y' x'h y'h
-    exfalso
-    simp at *
-  ⟩
-
-lemma isChain_down (x : Down) (xs : List Down) : isChain (x :: xs) → isChain xs := by
-  intros h n x' y' getn getn_one
-  apply h (n+1)
-  rw [← getn]
-  simp
-  rw [← getn_one]
-  simp
-
-lemma Zero_Chains : ∀ (l : List Down), l.head? = some Zero → isChain l → l = [Zero]
-  | [], l_head, l_isChain => by cases l_head
-  | [x], l_head, l_isChain => by simp at *; exact l_head
-  | x :: xs :: xss, l_head, l_isChain => by 
-    simp at *
-    cases l_head
-    exfalso
-    apply not_mem_zero xs
-    apply l_isChain 0 Zero xs rfl rfl
-
-lemma le_Zero : ∀ (a : Down) (h : le a Zero), a = Zero
-  | a, ⟨l, ⟨l_head, l_last⟩, l_isChain⟩ => 
-    have : l = [Zero] := Zero_Chains l l_head l_isChain
-    by
-    cases this
-    cases l_last
-    apply rfl
-
-lemma le_Zero_iff (a : Down) : le a Zero ↔ a = Zero where
-  mpr h := by cases h; apply le_refl
-  mp h := le_Zero a h
-
-lemma lt_strongly_antisymm : ∀ a : Down, ¬ lt a a
-  | Zero, h => 
-    have ⟨l, ⟨l_head, l_last⟩, l_isChain, l_length⟩ := h
-    have : l = [Zero] := Zero_Chains l l_head l_isChain
-    by 
-    cases this
-    simp at l_length
-  | Limit f, h =>
-    have ⟨l, ⟨l_head, l_last⟩, l_isChain, l_length⟩ := h
-    by 
-      simp at *
-      cases l with
-      | nil => _
-      | cons x xs => _ 
-
-lemma lt_iff_le_not_le (a b : Down) : lt a b ↔ (le a b ∧ ¬(le b a)) where
-  mp h := 
-    match h with
-    | ⟨l, lh⟩ => ⟨⟨l, lh.1, lh.2.1⟩, _⟩
-  mpr := _
-      
-instance : PartialOrder Down := {
-  le := le
-  lt := lt
-  le_refl := le_refl 
-  le_trans := λ _ _ _ => le_trans
-  le_antisymm := le_antisymm
-  lt_iff_le_not_le := _
-}
+-- instance : PartialOrder Down := {
+--   le := le
+--   lt := lt
+--   le_refl := le_refl 
+--   le_trans := λ _ _ _ => le_trans
+--   le_antisymm := le_antisymm
+--   lt_iff_le_not_le := _
+-- }
