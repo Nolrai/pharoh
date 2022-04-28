@@ -58,6 +58,8 @@ def Sequence.cycle_def (l : List α) (p : l.length > 0) :
   funext n
   simp
 
+def some_ext (a b : α) : some a = some b → a = b := λ p => by cases p; rfl
+
 lemma List.length_init_aux : ∀ (n : ℕ) (l : List α), l.length = n → l.init.length = l.length - 1
   | 0, [], _ => rfl
   | 1, [x], _ => rfl
@@ -111,6 +113,11 @@ def le (x y : Down) :=
 
 def lt x y :=
   ∃ l : List Down, isToFrom x y l ∧ isChain l ∧ l.length ≥ 2
+
+lemma List.more_than_two  {z zs : α} {zss : List α} : (z :: zs :: zss).length ≥ 2 := by
+  apply Nat.succ_le_succ
+  apply Nat.succ_le_succ
+  apply Nat.zero_le
 
 def le_aux : List α → List α → List α
   | l, [] => l
@@ -476,23 +483,55 @@ lemma le_trans_isChain
         rw [← getn_one, h]
         simp
         rw [h]
-        apply le_refl
+        apply Nat.le_refl
         apply Nat.lt_of_succ_le
         rw [← h]
-        apply le_refl
+        apply Nat.le_refl
 
 lemma lt_trans : ∀ {x y z}, lt x y → lt y z → lt x z
   | x, y, z, 
-    ⟨lxy, head_last_lxy, lxy_isChain, lxy_length⟩, 
-    ⟨lyz, head_last_lyz, lyz_isChain, lyz_length⟩ =>
-    have le_x_y : le x y := ⟨lxy, head_last_lxy, lxy_isChain⟩
-    have le_y_z : le y z := ⟨lyz, head_last_lyz, lyz_isChain⟩
-    by
-    
+    ⟨lxy, ⟨head_lxy, last_lxy⟩, lxy_isChain, lxy_length⟩, 
+    ⟨lyz, ⟨head_lyz, last_lyz⟩, lyz_isChain, lyz_length⟩ =>
+    match lxy, lyz with
+    | _::ys::yss, _::zs::zss  => by
+      simp at head_lxy head_lyz
+      cases head_lxy
+      cases head_lyz
+      apply Exists.intro (le_aux (z::zs::zss) (y::ys::yss))
+      apply And.intro
+      apply le_trans_isToFrom last_lxy last_lyz
+      apply And.intro
+      apply le_trans_isChain last_lyz lyz_isChain lxy_isChain
+      rw [le_aux_cons, List.cons_append, List.cons_append]
+      apply List.more_than_two
 
 lemma lt_strongly_antisymm : ∀ a b, lt a b → ¬ lt b a
   | a, b, a_lt_b, b_lt_a => lt_strongly_antisymm' a (lt_trans a_lt_b b_lt_a)
 
+lemma le_antisymm  (a b : Down) : le a b → le b a → a = b
+  | ⟨lxy, ⟨head_lxy, last_lxy⟩, lxy_isChain⟩, ⟨lyx, ⟨head_lyx, last_lyx⟩, lyx_isChain⟩ =>
+    match lxy, lyx with
+    | [], _ => by simp at *
+    | _, [] => by simp at *
+    | [_], _ => by 
+      simp at *
+      apply Eq.trans last_lxy.symm head_lxy
+    | _, [_] => by 
+      simp at *
+      apply Eq.trans head_lyx.symm last_lyx
+    | _::ys::yss, _::zs::zss  => by
+      have head_lxy' : _ = b := by
+        simp at head_lxy
+        exact head_lxy
+      have head_lyx' : _ = a := by
+        simp at head_lyx
+        exact head_lyx
+      cases head_lxy'
+      cases head_lyx'
+      exfalso
+      apply lt_strongly_antisymm a b
+      exact ⟨_, ⟨head_lxy, last_lxy⟩, lxy_isChain, List.more_than_two⟩
+      exact ⟨_, ⟨head_lyx, last_lyx⟩, lyx_isChain, List.more_than_two⟩
 
 lemma le_trans {x y z} : le x y → le y z → le x z
   | ⟨lxy, ⟨head_lxy, last_lxy⟩, lxy_isChain⟩, ⟨lyz, ⟨head_lyz, last_lyz⟩, lyz_isChain⟩ =>
@@ -530,13 +569,43 @@ lemma le_trans {x y z} : le x y → le y z → le x z
       apply le_trans_isToFrom last_lxy last_lyz
       apply le_trans_isChain last_lyz lyz_isChain lxy_isChain
 
+lemma lt_iff_le_not_le (a b : Down) : lt a b ↔ le a b ∧ ¬ le b a := 
+{ mp := λ ⟨lxy, ⟨head_lxy, last_lxy⟩, lxy_isChain, lxy_long⟩ =>
+  have le_b_a := ⟨lxy, ⟨head_lxy, last_lxy⟩, lxy_isChain⟩
+  ⟨ le_b_a 
+  , λ h2 => 
+    let a_eq_b : a = b := le_antisymm _ _ le_b_a h2
+    by 
+    cases a_eq_b
+    apply lt_strongly_antisymm a a _ _
+    assumption
+    assumption
+  ⟩
 
+, mpr := λ ⟨⟨lxy, ⟨head_lxy, last_lxy⟩, lxy_isChain⟩, not_le_b_a⟩ =>
+    have a_neq_b : a ≠ b := by
+      intros h
+      apply not_le_b_a
+      rw [h]
+      apply Down.le_refl
+    match lxy with
+    | [] => by 
+      simp at *
+    | [x] => by 
+      simp at *
+      exfalso
+      apply a_neq_b
+      apply Eq.trans last_lxy.symm head_lxy
+    | x::xs::xss =>
+      ⟨x::xs::xss, ⟨head_lxy, last_lxy⟩, lxy_isChain, List.more_than_two⟩
+}
 
--- instance : PartialOrder Down := {
---   le := le
---   lt := lt
---   le_refl := le_refl 
---   le_trans := λ _ _ _ => le_trans
---   le_antisymm := le_antisymm
---   lt_iff_le_not_le := _
--- }
+instance : PartialOrder Down := {
+  le := Down.le
+  lt := Down.lt
+  le_refl := Down.le_refl 
+  le_trans := λ _ _ _ => Down.le_trans
+  le_antisymm := Down.le_antisymm
+  lt_iff_le_not_le := lt_iff_le_not_le
+}
+
