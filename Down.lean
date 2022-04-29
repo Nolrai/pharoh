@@ -31,15 +31,19 @@ lemma take_length : ∀ n (s : Sequence α), (s.take n).length = n
     apply take_length n
 
 @[simp]
-lemma get?_take (s : Sequence α) : ∀ n ix, ix < n → List.get? (s.take n) ix = some (s ix)
-  | 0, _, p => by exfalso; apply Nat.not_lt_zero _ p
-  | (Nat.succ n), 0, _ => by simp
-  | (Nat.succ (Nat.succ n)), (Nat.succ ix), p => by
+lemma get?_take_aux : ∀ n ix (s : Sequence α), ix < n → List.get? (s.take n) ix = some (s ix)
+  | 0, _, s, p => by exfalso; apply Nat.not_lt_zero _ p
+  | (Nat.succ n), 0, s, _ => by simp
+  | (Nat.succ (Nat.succ n)), (Nat.succ ix), s, p => by
     rw [Sequence.take_succ]
-    rw [List.get?_succ, get?_take]
+    rw [List.get?_succ]
+    rw [get?_take_aux (n+1)]
     simp
     rw [Nat.add_one] at *
     apply Nat.lt_of_succ_lt_succ p
+
+abbrev get?_take (s : Sequence α) : ∀ n ix, ix < n → List.get? (s.take n) ix = some (s ix) := 
+  λ n ix => get?_take_aux n ix s
 
 end Sequence
 
@@ -538,7 +542,7 @@ lemma le_trans {x y z} : le x y → le y z → le x z
     match lxy, lyz with
     | [], _ => by simp at *
     | _, [] => by simp at *
-    | [x'], _ =>
+    | [x'], lyz =>
       have some_x_eq_some_y : some x = some y := by 
         rw [← head_lxy, ← last_lxy]
         simp
@@ -548,8 +552,8 @@ lemma le_trans {x y z} : le x y → le y z → le x z
       by
         simp
         rw [this]
-        assumption
-    | _, [y'] =>
+        exact ⟨lyz, ⟨head_lyz, last_lyz⟩, lyz_isChain⟩
+    | lxy, [y'] =>
       have some_y_eq_some_z : some y = some z := by 
         rw [← head_lyz, ← last_lyz]
         simp
@@ -557,9 +561,8 @@ lemma le_trans {x y z} : le x y → le y z → le x z
         injection some_y_eq_some_z
         assumption
       by
-        simp
         rw [← this]
-        assumption
+        exact ⟨lxy, ⟨head_lxy, last_lxy⟩, lxy_isChain⟩
     | _::ys::yss, _::zs::zss  => by
       simp at head_lxy head_lyz
       cases head_lxy
@@ -603,9 +606,56 @@ lemma lt_iff_le_not_le (a b : Down) : lt a b ↔ le a b ∧ ¬ le b a :=
 instance : PartialOrder Down := {
   le := Down.le
   lt := Down.lt
-  le_refl := Down.le_refl 
+  le_refl := Down.le_refl
   le_trans := λ _ _ _ => Down.le_trans
   le_antisymm := Down.le_antisymm
-  lt_iff_le_not_le := lt_iff_le_not_le
+  lt_iff_le_not_le := Down.lt_iff_le_not_le
 }
 
+lemma mem_lt (h : mem a b) : a < b :=
+  have ba_isChain : isChain [b, a] := by
+    intros n x' y' xh yh
+    cases n with
+    | succ n => simp at *
+    | zero => 
+      simp at *
+      cases xh
+      cases yh
+      exact h
+  ⟨[b, a], ⟨rfl, rfl⟩, ba_isChain, Nat.le_refl 2⟩ 
+
+lemma not_lt_zero : ∀ (a : Down), ¬ a < 0
+  | Zero, h => by
+    rw [_root_.lt_iff_le_not_le] at h
+    apply h.2 (le_refl 0)
+  | Limit elems, ⟨[], ⟨l_head, l_tail⟩, l_chain, l_length⟩ => by simp at l_length
+  | Limit elems, ⟨[x], ⟨l_head, l_tail⟩, l_chain, l_length⟩ => by simp at l_length
+  | Limit elems, ⟨_::xs::xss, ⟨l_head, l_tail⟩, l_chain, l_length⟩ => by
+    simp at *
+    cases l_head
+    apply not_mem_Zero xs
+    apply l_chain 0 0 xs rfl rfl
+
+lemma zero_le : ∀ a : Down, 0 ≤ a
+  | Zero => le_refl 0
+  | Limit a => by
+    apply _root_.le_trans (zero_le (a 0)) (le_of_lt (mem_lt _))
+    exists 0
+
+universe u
+
+lemma strong_induction_aux 
+  (P : Down → Prop) 
+  (P_lt : ∀ a, (∀ b, b < a → P b) → P a)
+  : ∀ x y, y ≤ x → P y
+  | _, Zero, _ => P_lt Zero (λ b b_lt => (not_lt_zero b b_lt).elim)
+  | Zero, y, h => by
+    rw [le_iff_lt_or_eq] at h
+    cases h with
+    | inl h => exfalso; apply not_lt_zero _ h
+    | inr h => 
+      cases h
+      apply strong_induction_aux _ P_lt
+      apply zero_le Zero
+  | Limit elems_x, Limit elems_y, y_le_x => by
+    
