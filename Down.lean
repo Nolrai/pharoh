@@ -647,15 +647,38 @@ universe u
 lemma strong_induction_aux 
   (P : Down → Prop) 
   (P_lt : ∀ a, (∀ b, b < a → P b) → P a)
-  : ∀ x y, y ≤ x → P y
-  | _, Zero, _ => P_lt Zero (λ b b_lt => (not_lt_zero b b_lt).elim)
-  | Zero, y, h => by
-    rw [le_iff_lt_or_eq] at h
-    cases h with
-    | inl h => exfalso; apply not_lt_zero _ h
-    | inr h => 
-      cases h
-      apply strong_induction_aux _ P_lt
-      apply zero_le Zero
-  | Limit elems_x, Limit elems_y, y_le_x => by
-    
+  : ∀ x y, y ≤ x → P y := by
+
+
+  -- | _, Zero, _ => P_lt Zero (λ b b_lt => (not_lt_zero b b_lt).elim)
+  -- | Zero, y, h => by
+  --   rw [le_iff_lt_or_eq] at h
+  --   cases h with
+  --   | inl h => exfalso; apply not_lt_zero _ h
+  --   | inr h => 
+  --     cases h
+  --     apply strong_induction_aux _ P_lt
+  --     apply zero_le Zero
+  -- | Limit elems_x, Limit elems_y, ⟨l, ⟨l_head, l_tail⟩, l_chain⟩ => 
+  --   match l with
+  --   | [] => by simp at *
+  --   | [x] => by simp at *
+
+  -- intros x
+  -- induction x with
+  -- | Zero =>
+  --   intros y yh
+  --   rw [le_iff_lt_or_eq] at yh
+  --   cases yh with
+  --   | inl h => exfalso; apply not_lt_zero _ h
+  --   | inr h => 
+  --     cases h
+  --     apply strong_induction_aux _ P_lt
+  --     apply zero_le Zero
+  -- | Limit elems elems_ih =>
+  --   intros y yh
+  --   have ⟨l, ⟨l_head, l_tail⟩, l_chain⟩ := yh
+  --   cases l with
+  --   | nil => simp at *
+  --   | cons x xs =>
+  --     cases l with
