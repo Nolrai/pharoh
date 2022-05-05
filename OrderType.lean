@@ -1,6 +1,7 @@
-import Mathlib.Init.Algebra.Order
+import Mathlib
+import Mathlib.Algebra.Group.Defs
 
-universe u
+universe u v
 
 inductive Squash' (α : Type u) : Prop
   | intro : α → Squash' α
@@ -19,7 +20,7 @@ instance : CoeSort Box (Type u) where
 
 instance (b : Box) : WellOrder b := b.order 
 
-structure equiv (a b : Box) where
+structure order_equiv (a b : Box) where
   f : a → b
   g : b → a
   f_mono : ∀ x y : a, x ≤ y → f x ≤ f y
@@ -27,7 +28,9 @@ structure equiv (a b : Box) where
   f_of_g : ∀ x, f (g x) = x
   g_of_f : ∀ x, g (f x) = x
 
-lemma equiv_refl : equiv a a where
+infix:50 " ≅ " => order_equiv  
+
+def order_equiv.refl : a ≅ a where
   f := id
   g := id
   f_mono := λ _ _ => id
@@ -35,17 +38,15 @@ lemma equiv_refl : equiv a a where
   f_of_g := λ _ => rfl
   g_of_f := λ _ => rfl
 
-lemma equiv_symm : equiv a b → equiv b a
-  | ab => {
-    f := ab.g
-    g := ab.f
-    f_mono := ab.g_mono
-    g_mono := ab.f_mono
-    f_of_g := ab.g_of_f
-    g_of_f := ab.f_of_g
-  }
+def order_equiv.symm (ab : a ≅ b) : b ≅ a where
+  f := ab.g
+  g := ab.f
+  f_mono := ab.g_mono
+  g_mono := ab.f_mono
+  f_of_g := ab.g_of_f
+  g_of_f := ab.f_of_g
 
-lemma equiv_trans : equiv a b → equiv b c → equiv a c
+def order_equiv.trans : a ≅ b → b ≅ c → a ≅ c
   | ab, bc => {
     f := bc.f ∘ ab.f
     g := ab.g ∘ bc.g
@@ -63,16 +64,19 @@ lemma equiv_trans : equiv a b → equiv b c → equiv a c
     g_of_f := λ x => by simp; rw [bc.g_of_f, ab.g_of_f]
   }
 
+instance : HasEquiv Box where
+  Equiv := λ a => Squash' ∘ order_equiv a
+
 def OrderSetoid : Setoid Box where
-  r := λ a b => Squash' (equiv a b)
+  r := λ a b => a ≈ b
   iseqv := { 
-    refl := fun x => Squash'.intro equiv_refl,
+    refl := fun x => Squash'.intro order_equiv.refl,
     symm := fun {x y} xy =>
       match xy with
-      | Squash'.intro xy => Squash'.intro (equiv_symm xy),
+      | Squash'.intro xy => Squash'.intro (order_equiv.symm xy),
     trans := fun {x y z} xy yz =>
       match xy, yz with
-      | Squash'.intro xy, Squash'.intro yz => Squash'.intro (equiv_trans xy yz)
+      | Squash'.intro xy, Squash'.intro yz => Squash'.intro (order_equiv.trans xy yz)
   }
 
 def Ordinal := Quotient OrderSetoid
@@ -91,9 +95,6 @@ instance empty_WellOrder : WellOrder Empty where
   le_total := by intros a; cases a
   decidable_le := by intros a; cases a
   getMin := by intros _ _ a; cases a
-
-instance : OfNat Ordinal 0 where
-  ofNat := Ordinal.mk ⟨Empty, empty_WellOrder⟩
 
 instance unit_WellOrder : WellOrder Unit where
   le := λ _ _ => True
@@ -234,13 +235,13 @@ instance WellOrder [woa : WellOrder α] [wob : WellOrder β] : WellOrder (α ⊕
         match c with
         | Sum.inl c => (h ⟨c, Pc⟩).elim
         | Sum.inr c => le.inr $ wx.2 c Pc
-      ⟩
+      ⟩ 
 
 end Sum
 
 section Prod
 
-variable {α : Type u} {β : α → Type u} [poa : LinearOrder α] [pob : ∀ {α}, LinearOrder (β α)]
+variable {α : Type u} {β : α → Type v} [poa : LinearOrder α] [pob : ∀ {α}, LinearOrder (β α)]
 
 open Sigma
 
@@ -296,14 +297,259 @@ lemma le_antisymm {x y : (a : α) × β a} : le x y → le y x → x = y
   | _, le.refl => rfl
   | le.of_lt xy, le.of_lt yx => (lt_asymm xy yx).elim
 
-lemma le_total := 
+lemma lt_trichotomy : ∀ (x y : (a : α) × β a), lt x y ∨ x = y ∨ lt y x
+  | ⟨a₁, a₂⟩, ⟨b₁, b₂⟩ => 
+    match _root_.lt_trichotomy a₁ b₁ with
+      | Or.inl a₁ltb₁ => Or.inl (on_fst a₁ltb₁)
+      | Or.inr (Or.inr b₁lta₁) => Or.inr ∘ Or.inr $ on_fst b₁lta₁
+      | Or.inr (Or.inl a₁eqb₁) =>
+        by 
+        cases a₁eqb₁
+        exact
+          match _root_.lt_trichotomy a₂ b₂ with
+          | Or.inl a₂ltb₂ => Or.inl (on_snd a₂ltb₂)
+          | Or.inr (Or.inr b₂lta₂) => Or.inr ∘ Or.inr $ on_snd b₂lta₂
+          | Or.inr (Or.inl a₂eqb₂) => Or.inr ∘ Or.inl $ by cases a₂eqb₂; rfl
 
-instance WellOrder : WellOrder ((a : α) × β a) where
+lemma le_total (x y : (a : α) × β a) : le x y ∨ le y x :=
+    match lt_trichotomy x y with
+    | Or.inl lt_h => Or.inl $ le.of_lt lt_h
+    | Or.inr (Or.inl eq_h) => Or.inr $ by cases eq_h; exact le.refl
+    | Or.inr (Or.inr lt_h) => Or.inr $ le.of_lt lt_h
+
+instance decidable_eq : DecidableEq ((a : α) × β a) 
+  | ⟨a₁, a₂⟩, ⟨b₁, b₂⟩ =>
+    match a₁, b₁, poa.decidable_eq a₁ b₁ with
+    | a₁, .(a₁), isTrue (Eq.refl a₁) => 
+      match a₂, b₂, pob.decidable_eq a₂ b₂ with
+      | a₂, .(a₂), isTrue (Eq.refl a₂) => isTrue rfl
+      | a₂, b₂, isFalse not_eq => isFalse (λ hyp => by cases hyp; apply not_eq; rfl)
+    | a₁, b₁, isFalse not_eq => isFalse (λ hyp => by cases hyp; apply not_eq; rfl)
+
+instance decidable_lt : DecidableRel (lt : ((a : α) × β a) → ((a : α) × β a) → Prop)
+  | ⟨a₁, a₂⟩, ⟨b₁, b₂⟩ =>
+  if h : a₁ < b₁
+    then isTrue (on_fst h) 
+    else match a₁, b₁, poa.decidable_eq a₁ b₁ with
+      | a₁, .(a₁), isTrue (Eq.refl a₁) =>
+        if h' : a₂ < b₂ 
+          then isTrue (on_snd h')
+          else isFalse λ hyp =>
+            by
+            cases hyp
+            apply h; assumption
+            apply h'; assumption
+      | a₁, b₁, isFalse h' => isFalse $ λ hyp =>
+        by
+        cases hyp
+        apply h; assumption
+        apply h'; rfl
+
+def decidable_le : DecidableRel (le : ((a : α) × β a) → ((a : α) × β a) → Prop)
+  | x, y =>
+    if h : lt x y
+      then isTrue (le.of_lt h)
+      else if h' : x = y
+        then isTrue $ by cases h'; apply le.refl
+        else isFalse $ fun hyp =>
+        match x, y, hyp with
+        | x, .(x), le.refl => h' rfl
+        | x, y, le.of_lt h'' => h h''
+
+end Prod --namespace
+end Prod --section
+
+-- new section but then open the same namespace
+section Prod2
+namespace Prod
+
+variable {α : Type u} {β : α → Type v} [woa : WellOrder α] [wob : ∀ a : α, WellOrder (β a)]
+
+lemma getMin 
+  (LEM : (Q : Prop) → Decidable Q) (P : (a : α) × β a → Prop) (a : (a : α) × β a) (Pa : P a) :
+  ∃ b, P b ∧ ∀ (c : (a : α) × β a), P c → le b c :=
+    by
+    have ⟨x₁, ⟨x₂', Px⟩ , min_x₁⟩ := woa.getMin LEM (λ a => ∃ b : β a, P ⟨a, b⟩) a.1 ⟨a.2, Pa⟩ 
+    have ⟨x₂, Px₂, min_x₂⟩ := (wob x₁).getMin LEM (λ b => P ⟨x₁, b⟩) x₂' Px
+    exists ⟨x₁, x₂⟩
+    constructor
+    apply Px₂
+    intros c Pc
+    have ⟨c₁, c₂⟩ := c
+    match le_iff_lt_or_eq.mp $ min_x₁ c₁ ⟨c₂, Pc⟩ with
+    | Or.inl h => apply le.of_lt (lt.on_fst h)
+    | Or.inr h => 
+      cases h
+      have := min_x₂ c₂ Pc
+      rw [le_iff_lt_or_eq] at this
+      cases this with
+      | inl h => 
+        apply le.of_lt
+        apply lt.on_snd h 
+      | inr h => 
+        cases h; exact le.refl
+
+instance WellOrder [WellOrder α] [∀ a : α, WellOrder (β a)] : WellOrder ((a : α) × β a) where
   lt := lt
   le := le
   le_refl := λ _ => le.refl
   le_trans := λ _ _ _ xy yz => le_trans xy yz
   lt_iff_le_not_le := λ _ _ => lt_iff_le_not_le
   le_antisymm := λ x y => le_antisymm
-  le_total := _
-  decidable_le := _
+  le_total := le_total
+  decidable_le := decidable_le
+  getMin := getMin
+
+end Prod
+end Prod2
+
+def Box.add ( x y : Box) : Box := 
+  ⟨x.1 ⊕ y.1, @Sum.WellOrder _ _ x.2 y.2⟩
+
+def Box.add_assoc_f {a b c : Box} : (a.carrier ⊕ b.carrier) ⊕ c.carrier → a.carrier ⊕ b.carrier ⊕ c.carrier
+  | Sum.inl (Sum.inl x) => Sum.inl x
+  | Sum.inl (Sum.inr x) => Sum.inr (Sum.inl x)
+  | Sum.inr x => Sum.inr (Sum.inr x)
+
+def Box.add_assoc_g {a b c : Box} : a.carrier ⊕ b.carrier ⊕ c.carrier → (a.carrier ⊕ b.carrier) ⊕ c.carrier
+  | Sum.inl x => Sum.inl $ Sum.inl x 
+  | Sum.inr (Sum.inl x) => Sum.inl (Sum.inr x)
+  | Sum.inr (Sum.inr x) => Sum.inr x
+
+open Sum.le
+
+lemma Box.add_assoc_f_mono {a b c : Box} : ∀ {x y : (add (add a b) c).carrier}, 
+  x ≤ y → add_assoc_f x ≤ add_assoc_f y 
+  | _, _, inl (inl h) => inl h
+  | _, _, inl (inr h) => inr (inl h)
+  | _, _, inl inl_inr => inl_inr
+  | _, _, inr h => Sum.le.inr (Sum.le.inr h)
+  | (Sum.inl x), (Sum.inr y), inl_inr => 
+    match x with
+    | Sum.inl x => inl_inr
+    | Sum.inr x => inr inl_inr
+
+lemma Box.add_assoc_g_mono {a b c : Box} : ∀ {x y : (add a (add b c)).carrier}, 
+  x ≤ y → add_assoc_g x ≤ add_assoc_g y 
+  | _, _, inl h => inl (inl h)
+  | _, _, inr (inl h) => inl $ inr h
+  | _, _, inr (inr h) => inr h
+  | _, _, inr inl_inr => inl_inr
+  | (Sum.inl x), (Sum.inr y), inl_inr => 
+    match y with
+    | Sum.inl y => inl inl_inr
+    | Sum.inr y => inl_inr
+
+def Box.add_assoc : Box.add (Box.add a b) c ≅ Box.add a (Box.add b c) :=
+  by
+  simp
+  constructor
+  case f => exact Box.add_assoc_f
+  case g => exact Box.add_assoc_g
+  case f_mono => 
+    intros x y xy
+    apply Box.add_assoc_f_mono xy
+  case g_mono =>
+    intros x y xy
+    apply Box.add_assoc_g_mono xy
+  case f_of_g => 
+    intros x
+    rcases x with (x | (y | z))
+    all_goals rfl
+  case g_of_f => 
+    intros x
+    rcases x with ((x | y) | z)
+    all_goals rfl
+
+namespace Ordinal
+
+def addEquivF {a₁ b₁ a₂ b₂ : Box} 
+  (a_equiv : a₁ ≅ a₂) 
+  (b_equiv : b₁ ≅ b₂) :
+  (Box.add a₁ b₁).carrier → (Box.add a₂ b₂).carrier 
+  | Sum.inl x => Sum.inl (a_equiv.f x)
+  | Sum.inr x => Sum.inr (b_equiv.f x)
+
+@[simp]
+lemma addEquivF_inl : addEquivF a_equiv b_equiv (Sum.inl x) = Sum.inl (a_equiv.f x) := rfl
+
+@[simp]
+lemma addEquivF_inr : addEquivF a_equiv b_equiv (Sum.inr x) = Sum.inr (b_equiv.f x) := rfl
+
+lemma addWellDefined (a₁ b₁ a₂ b₂ : Box) 
+  (a_equiv : a₁ ≈ a₂) 
+  (b_equiv : b₁ ≈ b₂) :
+  mk (Box.add a₁ b₁) = mk (Box.add a₂ b₂) := 
+  by
+  apply Quotient.sound; case a =>
+  cases a_equiv with | intro a_equiv => case intro =>
+  cases b_equiv with | intro b_equiv => case intro =>
+  apply Squash'.intro; case a =>
+    constructor
+    case f => apply addEquivF a_equiv b_equiv
+    case g => apply addEquivF a_equiv.symm b_equiv.symm
+    case f_mono => exact
+      λ x y x_le_y =>
+      match x_le_y with
+      | Sum.le.inl h => Sum.le.inl (a_equiv.f_mono _ _ h)
+      | Sum.le.inr h => Sum.le.inr (b_equiv.f_mono _ _ h)
+      | Sum.le.inl_inr => Sum.le.inl_inr
+    case g_mono => exact
+      λ x y x_le_y =>
+      match x_le_y with
+      | Sum.le.inl h => Sum.le.inl (a_equiv.symm.f_mono _ _ h)
+      | Sum.le.inr h => Sum.le.inr (b_equiv.symm.f_mono _ _ h)
+      | Sum.le.inl_inr => Sum.le.inl_inr
+    case f_of_g =>
+      intros x
+      cases x
+      case inl x =>
+        have ⟨a_f, a_g, _, _, a_f_of_g, _⟩ := a_equiv
+        simp [order_equiv.symm]
+        rw [a_f_of_g]
+      case inr x =>
+        have ⟨b_f, b_g, _, _, b_f_of_g, _⟩ := b_equiv
+        simp [order_equiv.symm]
+        rw [b_f_of_g]
+    case g_of_f => 
+      intros x
+      cases x
+      case inl x =>
+        have ⟨a_f, a_g, _, _, _, a_g_of_f⟩ := a_equiv
+        simp [order_equiv.symm]
+        rw [a_g_of_f]
+      case inr x =>
+        have ⟨b_f, b_g, _, _, _, b_g_of_f⟩ := b_equiv
+        simp [order_equiv.symm]
+        rw [b_g_of_f]
+
+def add : Ordinal → Ordinal → Ordinal :=
+  Quotient.lift₂ (fun x y => Ordinal.mk (Box.add x y)) (by simp; apply addWellDefined)
+
+lemma add_def (a b : Box) : add (Ordinal.mk a) (Ordinal.mk b) = (Ordinal.mk (Box.add a b)) := rfl
+
+instance : Zero Ordinal where
+  zero := Ordinal.mk ⟨Empty, empty_WellOrder⟩
+
+def add_assoc_motive (a' b' c' : Ordinal) := add (add a' b') c' = add a' (add b' c')
+  
+lemma add_assoc (a b c : Ordinal) : add (add a b) c = add a (add b c) :=
+  by
+  rw [← add_assoc_motive]
+  apply Quotient.inductionOn₃
+  intros a b c
+  rw [add_assoc_motive, ← Ordinal.mk]
+  repeat rw [add_def, add_def]
+  apply Quotient.sound
+  constructor
+  apply Box.add_assoc
+
+
+
+instance : AddMonoid Ordinal where
+  add := add
+  add_assoc := add_assoc
+  add_zero := _
+  zero_add := _
+  nsmul_zero' := _
+  nsmul_succ' := _
