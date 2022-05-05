@@ -644,10 +644,10 @@ lemma zero_le : ∀ a : Down, 0 ≤ a
 
 universe u
 
-lemma strong_induction_aux 
-  (P : Down → Prop) 
-  (P_lt : ∀ a, (∀ b, b < a → P b) → P a)
-  : ∀ x y, y ≤ x → P y := by
+-- lemma strong_induction_aux 
+--   (P : Down → Prop) 
+--   (P_lt : ∀ a, (∀ b, b < a → P b) → P a)
+--   : ∀ x y, y ≤ x → P y := by
 
 
   -- | _, Zero, _ => P_lt Zero (λ b b_lt => (not_lt_zero b b_lt).elim)
