@@ -28,6 +28,39 @@ structure order_equiv (a b : Box) where
   f_of_g : ∀ x, f (g x) = x
   g_of_f : ∀ x, g (f x) = x
 
+def order_equiv.mk_from_le (a b : Box)
+  (f : a → b)
+  (g : b → a)
+  (f_strict_mono : ∀ x y : a, x < y → f x < f y)
+  (g_strict_mono : ∀ x y : b, x < y → g x < g y)
+  (f_of_g : ∀ x, f (g x) = x)
+  (g_of_f : ∀ x, g (f x) = x) :
+  order_equiv a b :=
+  {
+    f := f
+    g := g
+    f_of_g := f_of_g
+    g_of_f := g_of_f
+    f_mono := by
+      intro x y xy
+      simp [le_iff_lt_or_eq] at *
+      cases xy
+      case inl xy =>
+        exact Or.inl (f_strict_mono _ _ xy)
+      case inr xy =>
+        cases xy
+        apply Or.inr rfl 
+    g_mono := by
+    intro x y xy
+    simp [le_iff_lt_or_eq] at *
+    cases xy
+    case inl xy =>
+      exact Or.inl (g_strict_mono _ _ xy)
+    case inr xy =>
+        cases xy
+        apply Or.inr rfl
+  }
+
 infix:50 " ≅ " => order_equiv  
 
 def order_equiv.refl : a ≅ a where
@@ -81,7 +114,7 @@ def OrderSetoid : Setoid Box where
 
 def Ordinal := Quotient OrderSetoid
 
-def Ordinal.mk := Quotient.mk OrderSetoid
+abbrev Ordinal.mk : Box → Ordinal := Quotient.mk OrderSetoid
 
 namespace Ordinal
 
@@ -461,6 +494,47 @@ def Box.add_assoc : Box.add (Box.add a b) c ≅ Box.add a (Box.add b c) :=
     rcases x with ((x | y) | z)
     all_goals rfl
 
+def Box.add_zero_f : τ ⊕ Empty → τ
+  | Sum.inl t => t
+  | Sum.inr e => e.elim
+
+def Box.add_zero : Box.add ⟨τ, ord⟩ ⟨Empty, empty_WellOrder⟩ ≅ ⟨τ, ord⟩ :=
+  by
+  rw [add]
+  simp
+  constructor
+  case f => exact Box.add_zero_f
+  case g => exact Sum.inl
+  case f_mono => exact λ (Sum.inl x) (Sum.inl y) (inl xy) => xy 
+  case g_mono => exact λ x y h => inl h
+  case f_of_g => exact λ x => rfl
+  case g_of_f =>
+    intros x
+    match x with
+    | Sum.inl x => rfl
+
+def Box.zero_add_f : Empty ⊕ τ → τ
+  | Sum.inl e => e.elim
+  | Sum.inr t => t 
+
+def Box.zero_add : Box.add ⟨Empty, empty_WellOrder⟩ ⟨τ, ord⟩ ≅ ⟨τ, ord⟩ :=
+  by
+  rw [add]
+  simp
+  constructor
+  case f => exact Box.zero_add_f
+  case g => exact Sum.inr
+  case f_mono => exact λ (Sum.inr x) (Sum.inr y) (inr xy) => xy 
+  case g_mono => exact λ x y h => inr h
+  case f_of_g => exact λ x => rfl
+  case g_of_f =>
+    intros x
+    match x with
+    | Sum.inr x => rfl
+
+def Box.mul (x y : Box) : Box :=
+  ⟨(_ : x) × y, @Prod.WellOrder x.1 (λ _ => y.1) x.2 (λ _ => y.2) ⟩
+
 namespace Ordinal
 
 def addEquivF {a₁ b₁ a₂ b₂ : Box} 
@@ -531,6 +605,8 @@ lemma add_def (a b : Box) : add (Ordinal.mk a) (Ordinal.mk b) = (Ordinal.mk (Box
 instance : Zero Ordinal where
   zero := Ordinal.mk ⟨Empty, empty_WellOrder⟩
 
+lemma zero_def : 0 = Ordinal.mk ⟨Empty, empty_WellOrder⟩ := rfl
+
 def add_assoc_motive (a' b' c' : Ordinal) := add (add a' b') c' = add a' (add b' c')
   
 lemma add_assoc (a b c : Ordinal) : add (add a b) c = add a (add b c) :=
@@ -544,12 +620,78 @@ lemma add_assoc (a b c : Ordinal) : add (add a b) c = add a (add b c) :=
   constructor
   apply Box.add_assoc
 
+lemma add_zero : ∀ x, add x 0 = x :=
+  by
+  apply Quotient.ind; case a =>
+  intro a
+  rw [zero_def, add_def]
+  cases a; case mk τ o =>
+  apply Quotient.sound
+  apply Squash'.intro
+  apply Box.add_zero
 
+lemma zero_add : ∀ x, add 0 x = x :=
+  by
+  apply Quotient.ind; case a =>
+  intro a
+  rw [zero_def, add_def]
+  cases a; case mk τ o =>
+  apply Quotient.sound
+  apply Squash'.intro
+  apply Box.zero_add  
+
+instance : Add Ordinal where
+  add := add
 
 instance : AddMonoid Ordinal where
-  add := add
   add_assoc := add_assoc
-  add_zero := _
-  zero_add := _
-  nsmul_zero' := _
-  nsmul_succ' := _
+  add_zero := add_zero
+  zero_add := zero_add
+  nsmul_zero' := Quotient.ind $ λ x => rfl
+  nsmul_succ' := λ n => Quotient.ind $ λ a => rfl
+
+lemma mulWellDefined (a₁ : Box) (b₁ : Box) (a₂ : Box) (b₂ : Box) : 
+  a₁ ≈ a₂ → 
+  b₁ ≈ b₂ → 
+  mk (Box.mul a₁ b₁) = mk (Box.mul a₂ b₂) := by
+  intros a_eqv b_eqv
+  cases a_eqv; case intro a_eqv =>
+  cases b_eqv; case intro b_eqv =>
+  apply Quotient.sound; case a =>
+  apply Squash'.intro; case a =>
+    constructor
+    case f => exact λ ⟨x, y⟩ => ⟨a_eqv.f x, b_eqv.f y⟩
+    case g => exact λ ⟨x, y⟩ => ⟨a_eqv.g x, b_eqv.g y⟩
+    case f_mono =>
+      intro a b
+      match a, b with
+      | ⟨a₁, b₁⟩, ⟨a₂, b₂⟩ =>
+        intro a_le_b
+        cases a_le_b
+        case refl => simp
+        case of_lt h =>
+          cases h
+          case on_fst h =>
+            simp
+            have := a_eqv.f_mono a₁ a₂ (le_of_lt h)
+            cases (le_iff_lt_or_eq.mp this)
+            case inl h => _
+            case inr h => _
+
+def mul : Ordinal → Ordinal → Ordinal :=
+  Quotient.lift₂ (λ x y => Ordinal.mk (Box.mul x y)) (by simp; apply mulWellDefined)
+
+instance : Mul Ordinal where
+  mul := _
+
+instance : One Ordinal where
+  one := Ordinal.mk ⟨PUnit, unit_WellOrder⟩
+
+instance : MonoidWithZero Ordinal where
+  mul_assoc := _
+  one_mul := _
+  mul_one := _
+  zero_mul := _
+  mul_zero := _
+  npow_zero' := Quotient.ind $ λ x => rfl
+  npow_succ' := λ n => Quotient.ind $ λ a => rfl
