@@ -1,6 +1,26 @@
 import Mathlib
 import Mathlib.Algebra.Group.Defs
 
+lemma lt_iff_le_and_ne [LinearOrder α] {x y : α} : x < y ↔ x ≤ y ∧ x ≠ y :=
+  by
+  rw [le_iff_lt_or_eq]
+  exact {
+    mp := λ h => 
+      ⟨ Or.inl h
+      , λ x_eq_y =>  
+      by 
+        rw [x_eq_y] at h
+        apply lt_asymm h h
+      ⟩,
+
+    mpr := λ ⟨x_lt_y, x_ne_y⟩ =>
+      match x_lt_y with
+      | Or.inl h => h
+      | Or.inr h => (x_ne_y h).elim
+  }
+  
+
+
 universe u v
 
 inductive Squash' (α : Type u) : Prop
@@ -49,7 +69,7 @@ def order_equiv.mk_from_le (a b : Box)
         exact Or.inl (f_strict_mono _ _ xy)
       case inr xy =>
         cases xy
-        apply Or.inr rfl 
+        apply Or.inr rfl
     g_mono := by
     intro x y xy
     simp [le_iff_lt_or_eq] at *
@@ -59,7 +79,7 @@ def order_equiv.mk_from_le (a b : Box)
     case inr xy =>
         cases xy
         apply Or.inr rfl
-  }
+  }  
 
 infix:50 " ≅ " => order_equiv  
 
@@ -78,6 +98,25 @@ def order_equiv.symm (ab : a ≅ b) : b ≅ a where
   g_mono := ab.f_mono
   f_of_g := ab.g_of_f
   g_of_f := ab.f_of_g
+
+def order_equiv.injective_f (eqv : order_equiv a b) {x y : a} (h : eqv.f x = eqv.f y) : x = y :=
+  have : eqv.g (eqv.f x) = eqv.g (eqv.f y) := by rw [h]
+  by
+  rw [g_of_f, g_of_f] at this
+  exact this
+
+def order_equiv.injective_g (eqv : order_equiv a b) {x y : b} (h : eqv.g x = eqv.g y) : x = y :=
+  eqv.symm.injective_f h
+
+def order_equiv.f_strict_mono (eqv : order_equiv a b) {x y : a} (x_lt_y : x < y) : eqv.f x < eqv.f y := by
+  rw [lt_iff_le_and_ne] at *
+  exact ⟨ eqv.f_mono _ _ x_lt_y.1
+        , λ hyp => x_lt_y.2 (eqv.injective_f hyp)
+        ⟩
+
+def order_equiv.g_strict_mono (eqv : order_equiv a b) {x y : b} (x_lt_y : x < y) : eqv.g x < eqv.g y :=
+  eqv.symm.f_strict_mono x_lt_y
+
 
 def order_equiv.trans : a ≅ b → b ≅ c → a ≅ c
   | ab, bc => {
@@ -515,7 +554,7 @@ def Box.add_zero : Box.add ⟨τ, ord⟩ ⟨Empty, empty_WellOrder⟩ ≅ ⟨τ,
 
 def Box.zero_add_f : Empty ⊕ τ → τ
   | Sum.inl e => e.elim
-  | Sum.inr t => t 
+  | Sum.inr t => t
 
 def Box.zero_add : Box.add ⟨Empty, empty_WellOrder⟩ ⟨τ, ord⟩ ≅ ⟨τ, ord⟩ :=
   by
@@ -524,7 +563,7 @@ def Box.zero_add : Box.add ⟨Empty, empty_WellOrder⟩ ⟨τ, ord⟩ ≅ ⟨τ,
   constructor
   case f => exact Box.zero_add_f
   case g => exact Sum.inr
-  case f_mono => exact λ (Sum.inr x) (Sum.inr y) (inr xy) => xy 
+  case f_mono => exact λ (Sum.inr x) (Sum.inr y) (inr xy) => xy
   case g_mono => exact λ x y h => inr h
   case f_of_g => exact λ x => rfl
   case g_of_f =>
@@ -534,6 +573,122 @@ def Box.zero_add : Box.add ⟨Empty, empty_WellOrder⟩ ⟨τ, ord⟩ ≅ ⟨τ,
 
 def Box.mul (x y : Box) : Box :=
   ⟨(_ : x) × y, @Prod.WellOrder x.1 (λ _ => y.1) x.2 (λ _ => y.2) ⟩
+
+def Box.mul_assoc : Box.mul (Box.mul a b) c ≅ Box.mul a (Box.mul b c) :=
+  by
+  simp [mul]
+  apply order_equiv.mk_from_le
+  case f => simp; exact λ ⟨⟨a, b⟩, c⟩ => ⟨a, ⟨b, c⟩⟩
+  case g => simp; exact λ ⟨a, ⟨b, c⟩⟩ => ⟨⟨a, b⟩, c⟩
+  case f_of_g => simp
+  case g_of_f => simp
+  case f_strict_mono => 
+    intros x y xy
+    match x, y with
+    | ⟨⟨x₁, x₂⟩, x₃⟩, ⟨⟨y₁, y₂⟩, y₃⟩ =>
+    cases xy
+    case on_fst h =>
+      cases h
+      case on_fst h =>
+        apply Prod.lt.on_fst h
+      case on_snd h =>
+        apply Prod.lt.on_snd
+        apply Prod.lt.on_fst h
+    case on_snd h =>
+      apply Prod.lt.on_snd 
+      apply Prod.lt.on_snd
+      apply h
+  case g_strict_mono =>
+    intros x y xy
+    match x, y with
+    | ⟨x₁, ⟨x₂, x₃⟩⟩, ⟨y₁, ⟨y₂, y₃⟩⟩ =>
+    cases xy
+    case on_fst h =>
+      simp
+      apply Prod.lt.on_fst
+      apply Prod.lt.on_fst
+      apply h
+    case on_snd h =>
+      cases h
+      case on_fst h =>
+        apply Prod.lt.on_fst
+        apply Prod.lt.on_snd
+        exact h
+      case on_snd h =>
+        apply Prod.lt.on_snd
+        exact h
+
+def Box.one_mul : Box.mul ⟨PUnit, unit_WellOrder⟩ ⟨τ, ord⟩ ≅ ⟨τ, ord⟩ :=
+  by
+  rw [mul]
+  simp
+  apply order_equiv.mk_from_le
+  case f => exact λ ⟨(), t⟩ => t 
+  case g => exact λ t => ⟨(), t⟩
+  case f_of_g => simp 
+  case g_of_f => simp
+  case f_strict_mono =>
+    intros x y xy
+    cases x; case mk x₁ x₂ => 
+    cases x₁
+    cases y; case mk y₁ y₂ =>
+    cases y₁
+    cases xy
+    case on_fst h => exfalso; apply lt_asymm h h
+    case on_snd h => exact h
+  case g_strict_mono =>
+    intros x y xy
+    simp at *
+    apply Prod.lt.on_snd
+    exact xy
+
+def Box.mul_one : Box.mul ⟨τ, ord⟩ ⟨PUnit, unit_WellOrder⟩ ≅ ⟨τ, ord⟩ :=
+  by
+  rw [mul]
+  simp
+  apply order_equiv.mk_from_le
+  case f => exact λ ⟨t, ()⟩ => t 
+  case g => exact λ t => ⟨t, ()⟩
+  case f_of_g => simp 
+  case g_of_f => simp
+  case f_strict_mono =>
+    intros x y xy
+    cases x; case mk x₁ x₂ => 
+    cases x₂
+    cases y; case mk y₁ y₂ =>
+    cases y₂
+    cases xy
+    case on_fst h => exact h
+    case on_snd h => exfalso; exact lt_asymm h h
+  case g_strict_mono =>
+    intros x y xy
+    simp at *
+    apply Prod.lt.on_fst
+    exact xy
+
+def Box.zero_mul : Box.mul ⟨Empty, empty_WellOrder⟩ ⟨τ, ord⟩ ≅ ⟨Empty, empty_WellOrder⟩ :=
+  by
+  rw [mul]
+  simp
+  constructor
+  case f => exact λ x => x.1.elim
+  case g => exact λ x => x.elim
+  case f_mono => exact λ x => x.1.elim
+  case g_of_f => exact λ x => x.1.elim
+  case g_mono => exact λ x => x.elim
+  case f_of_g => exact λ x => x.elim
+
+def Box.mul_zero : Box.mul ⟨τ, ord⟩ ⟨Empty, empty_WellOrder⟩ ≅ ⟨Empty, empty_WellOrder⟩ :=
+  by
+  rw [mul]
+  simp
+  constructor
+  case f => exact λ x => x.2.elim
+  case g => exact λ x => x.elim
+  case f_mono => exact λ x => x.2.elim
+  case g_of_f => exact λ x => x.2.elim
+  case g_mono => exact λ x => x.elim
+  case f_of_g => exact λ x => x.elim
 
 namespace Ordinal
 
@@ -638,7 +793,7 @@ lemma zero_add : ∀ x, add 0 x = x :=
   cases a; case mk τ o =>
   apply Quotient.sound
   apply Squash'.intro
-  apply Box.zero_add  
+  apply Box.zero_add
 
 instance : Add Ordinal where
   add := add
@@ -650,48 +805,123 @@ instance : AddMonoid Ordinal where
   nsmul_zero' := Quotient.ind $ λ x => rfl
   nsmul_succ' := λ n => Quotient.ind $ λ a => rfl
 
-lemma mulWellDefined (a₁ : Box) (b₁ : Box) (a₂ : Box) (b₂ : Box) : 
-  a₁ ≈ a₂ → 
-  b₁ ≈ b₂ → 
+lemma mulWellDefined (a₁ : Box) (b₁ : Box) (a₂ : Box) (b₂ : Box) :
+  a₁ ≈ a₂ →
+  b₁ ≈ b₂ →
   mk (Box.mul a₁ b₁) = mk (Box.mul a₂ b₂) := by
   intros a_eqv b_eqv
   cases a_eqv; case intro a_eqv =>
   cases b_eqv; case intro b_eqv =>
   apply Quotient.sound; case a =>
   apply Squash'.intro; case a =>
-    constructor
+    apply order_equiv.mk_from_le
+
     case f => exact λ ⟨x, y⟩ => ⟨a_eqv.f x, b_eqv.f y⟩
     case g => exact λ ⟨x, y⟩ => ⟨a_eqv.g x, b_eqv.g y⟩
-    case f_mono =>
-      intro a b
-      match a, b with
-      | ⟨a₁, b₁⟩, ⟨a₂, b₂⟩ =>
-        intro a_le_b
-        cases a_le_b
-        case refl => simp
-        case of_lt h =>
-          cases h
-          case on_fst h =>
-            simp
-            have := a_eqv.f_mono a₁ a₂ (le_of_lt h)
-            cases (le_iff_lt_or_eq.mp this)
-            case inl h => _
-            case inr h => _
+
+    case f_strict_mono => 
+      intros a b a_lt_b
+      match a, b, a_lt_b with
+      | ⟨a₁, b₁⟩, ⟨a₂, b₂⟩, Prod.lt.on_fst h => 
+        simp
+        apply Prod.lt.on_fst
+        apply a_eqv.f_strict_mono h
+      | ⟨a₁, b₁⟩, ⟨.(a₁), b₂⟩, Prod.lt.on_snd h =>
+        simp
+        apply Prod.lt.on_snd
+        apply b_eqv.f_strict_mono h
+    case g_strict_mono => 
+      intros a b a_lt_b
+      match a, b, a_lt_b with
+      | ⟨a₁, b₁⟩, ⟨a₂, b₂⟩, Prod.lt.on_fst h => 
+        simp
+        apply Prod.lt.on_fst
+        apply a_eqv.g_strict_mono h
+      | ⟨a₁, b₁⟩, ⟨.(a₁), b₂⟩, Prod.lt.on_snd h =>
+        simp
+        apply Prod.lt.on_snd
+        apply b_eqv.g_strict_mono h
+
+    case f_of_g =>
+      intro ⟨x₁, x₂⟩
+      simp
+      rw [a_eqv.f_of_g, b_eqv.f_of_g]
+    case g_of_f =>
+      intro ⟨x₁, x₂⟩
+      simp
+      rw [a_eqv.g_of_f, b_eqv.g_of_f]
 
 def mul : Ordinal → Ordinal → Ordinal :=
   Quotient.lift₂ (λ x y => Ordinal.mk (Box.mul x y)) (by simp; apply mulWellDefined)
 
 instance : Mul Ordinal where
-  mul := _
+  mul := mul
+
+lemma mul_def (a b : Box) : (Ordinal.mk a) * (Ordinal.mk b) = (Ordinal.mk (Box.mul a b)) := rfl
 
 instance : One Ordinal where
   one := Ordinal.mk ⟨PUnit, unit_WellOrder⟩
 
+lemma one_def : 1 = Ordinal.mk ⟨PUnit, unit_WellOrder⟩ := rfl
+
+lemma one_mul : ∀ x : Ordinal, 1 * x = x :=
+  by
+  apply Quotient.ind; case a =>
+  intro a
+  rw [one_def, mul_def]
+  cases a; case mk τ o =>
+  apply Quotient.sound
+  apply Squash'.intro
+  apply Box.one_mul
+
+lemma mul_one : ∀ x : Ordinal, x * 1 = x :=
+  by
+  apply Quotient.ind; case a =>
+  intro a
+  rw [one_def, mul_def]
+  cases a; case mk τ o =>
+  apply Quotient.sound
+  apply Squash'.intro
+  apply Box.mul_one
+
+lemma zero_mul : ∀ x : Ordinal, 0 * x = 0 :=
+  by
+  apply Quotient.ind; case a =>
+  intro a
+  rw [zero_def, mul_def]
+  cases a; case mk τ o =>
+  apply Quotient.sound
+  apply Squash'.intro
+  apply Box.zero_mul
+
+lemma mul_zero : ∀ x : Ordinal, x * 0 = 0 :=
+  by
+  apply Quotient.ind; case a =>
+  intro a
+  rw [zero_def, mul_def]
+  cases a; case mk τ o =>
+  apply Quotient.sound
+  apply Squash'.intro
+  apply Box.mul_zero
+
+def mul_assoc_motive (a' b' c' : Ordinal) := a' * b' * c' = a' * (b' * c')
+  
+lemma mul_assoc (a b c : Ordinal) : a * b * c = a * (b * c) :=
+  by
+  rw [← mul_assoc_motive]
+  apply Quotient.inductionOn₃
+  intros a b c
+  rw [mul_assoc_motive, ← Ordinal.mk]
+  repeat rw [add_def, add_def]
+  apply Quotient.sound
+  constructor
+  apply Box.mul_assoc
+
 instance : MonoidWithZero Ordinal where
-  mul_assoc := _
-  one_mul := _
-  mul_one := _
-  zero_mul := _
-  mul_zero := _
+  mul_assoc := mul_assoc
+  one_mul := one_mul
+  mul_one := mul_one
+  zero_mul := zero_mul
+  mul_zero := mul_zero
   npow_zero' := Quotient.ind $ λ x => rfl
   npow_succ' := λ n => Quotient.ind $ λ a => rfl
