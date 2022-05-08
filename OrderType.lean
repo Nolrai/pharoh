@@ -1,5 +1,4 @@
 import Mathlib
-import Mathlib.Algebra.Group.Defs
 
 lemma lt_iff_le_and_ne [LinearOrder α] {x y : α} : x < y ↔ x ≤ y ∧ x ≠ y :=
   by
@@ -20,7 +19,6 @@ lemma lt_iff_le_and_ne [LinearOrder α] {x y : α} : x < y ↔ x ≤ y ∧ x ≠
   }
   
 
-
 universe u v
 
 inductive Squash' (α : Type u) : Prop
@@ -38,7 +36,12 @@ namespace Box
 instance : CoeSort Box (Type u) where
   coe := Box.carrier
 
-instance (b : Box) : WellOrder b := b.order 
+instance (b : Box) : WellOrder b := b.order
+
+structure Box.le (a b : Box) :=
+  (f : a → b)
+  (f_strict_mono : ∀ x y : a, x < y → f x < f y)
+  (injective_f : Function.injective f)
 
 structure order_equiv (a b : Box) where
   f : a → b
@@ -48,7 +51,7 @@ structure order_equiv (a b : Box) where
   f_of_g : ∀ x, f (g x) = x
   g_of_f : ∀ x, g (f x) = x
 
-def order_equiv.mk_from_le (a b : Box)
+def order_equiv.from_strict (a b : Box)
   (f : a → b)
   (g : b → a)
   (f_strict_mono : ∀ x y : a, x < y → f x < f y)
@@ -79,7 +82,16 @@ def order_equiv.mk_from_le (a b : Box)
     case inr xy =>
         cases xy
         apply Or.inr rfl
-  }  
+  }
+
+def order_equiv.le_antisymm (ab : Box.le a b) (ba : Box.le b a) : order_equiv a b := by
+  apply order_equiv.from_strict
+  case f => exact ab.f
+  case g => exact ba.f
+  case f_strict_mono => exact ab.f_strict_mono
+  case g_strict_mono => exact ba.f_strict_mono
+  case f_of_g =>
+    
 
 infix:50 " ≅ " => order_equiv  
 
@@ -99,14 +111,15 @@ def order_equiv.symm (ab : a ≅ b) : b ≅ a where
   f_of_g := ab.g_of_f
   g_of_f := ab.f_of_g
 
-def order_equiv.injective_f (eqv : order_equiv a b) {x y : a} (h : eqv.f x = eqv.f y) : x = y :=
+def order_equiv.injective_f (eqv : order_equiv a b) : Function.injective (eqv.f) :=
+  λ x y h =>
   have : eqv.g (eqv.f x) = eqv.g (eqv.f y) := by rw [h]
   by
   rw [g_of_f, g_of_f] at this
   exact this
 
-def order_equiv.injective_g (eqv : order_equiv a b) {x y : b} (h : eqv.g x = eqv.g y) : x = y :=
-  eqv.symm.injective_f h
+def order_equiv.injective_g (eqv : order_equiv a b) : Function.injective (eqv.g) :=
+  eqv.symm.injective_f
 
 def order_equiv.f_strict_mono (eqv : order_equiv a b) {x y : a} (x_lt_y : x < y) : eqv.f x < eqv.f y := by
   rw [lt_iff_le_and_ne] at *
@@ -577,7 +590,7 @@ def Box.mul (x y : Box) : Box :=
 def Box.mul_assoc : Box.mul (Box.mul a b) c ≅ Box.mul a (Box.mul b c) :=
   by
   simp [mul]
-  apply order_equiv.mk_from_le
+  apply order_equiv.from_strict
   case f => simp; exact λ ⟨⟨a, b⟩, c⟩ => ⟨a, ⟨b, c⟩⟩
   case g => simp; exact λ ⟨a, ⟨b, c⟩⟩ => ⟨⟨a, b⟩, c⟩
   case f_of_g => simp
@@ -622,7 +635,7 @@ def Box.one_mul : Box.mul ⟨PUnit, unit_WellOrder⟩ ⟨τ, ord⟩ ≅ ⟨τ, o
   by
   rw [mul]
   simp
-  apply order_equiv.mk_from_le
+  apply order_equiv.from_strict
   case f => exact λ ⟨(), t⟩ => t 
   case g => exact λ t => ⟨(), t⟩
   case f_of_g => simp 
@@ -646,7 +659,7 @@ def Box.mul_one : Box.mul ⟨τ, ord⟩ ⟨PUnit, unit_WellOrder⟩ ≅ ⟨τ, o
   by
   rw [mul]
   simp
-  apply order_equiv.mk_from_le
+  apply order_equiv.from_strict
   case f => exact λ ⟨t, ()⟩ => t 
   case g => exact λ t => ⟨t, ()⟩
   case f_of_g => simp 
@@ -814,7 +827,7 @@ lemma mulWellDefined (a₁ : Box) (b₁ : Box) (a₂ : Box) (b₂ : Box) :
   cases b_eqv; case intro b_eqv =>
   apply Quotient.sound; case a =>
   apply Squash'.intro; case a =>
-    apply order_equiv.mk_from_le
+    apply order_equiv.from_strict
 
     case f => exact λ ⟨x, y⟩ => ⟨a_eqv.f x, b_eqv.f y⟩
     case g => exact λ ⟨x, y⟩ => ⟨a_eqv.g x, b_eqv.g y⟩
@@ -925,3 +938,29 @@ instance : MonoidWithZero Ordinal where
   mul_zero := mul_zero
   npow_zero' := Quotient.ind $ λ x => rfl
   npow_succ' := λ n => Quotient.ind $ λ a => rfl
+
+def le_welldefined : a₁ ≈ a₂ → b₁ ≈ b₂ → Squash' (Box.le a₁ b₁) = Squash' (Box.le a₂ b₂)
+  | ⟨a_eq⟩, ⟨b_eq⟩ => by 
+    apply propext
+    apply Iff.intro
+    case a.mp =>
+      intro h
+      cases h; case intro a_le_b =>
+      constructor; case a =>
+      constructor
+      case f => 
+        exact b_eq.f ∘ a_le_b.f ∘ a_eq.g
+      case injective_f =>
+        rw [Function.injective.of_comp_iff, Function.injective.of_comp_iff]
+        apply a_eq.injective_g
+        apply a_le_b.injective_f
+        apply b_eq.injective_f
+
+def le : Ordinal → Ordinal → Prop
+  | a, b =>  (Quotient.lift₂ (λ x y => Squash' (Box.le x y)) _ a b)
+
+lemma le_refl (x : Ordinal) : le 
+
+instance : WellOrder Ordinal where
+  le := le
+  le_refl := le_refl
