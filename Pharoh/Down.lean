@@ -644,11 +644,10 @@ lemma zero_le : ∀ a : Down, 0 ≤ a
 
 universe u
 
--- lemma strong_induction_aux 
---   (P : Down → Prop) 
---   (P_lt : ∀ a, (∀ b, b < a → P b) → P a)
---   : ∀ x y, y ≤ x → P y := by
-
+lemma strong_induction_aux 
+  (P : Down → Prop) 
+  (P_lt : ∀ a, (∀ b, b < a → P b) → P a)
+  : ∀ x y, y ≤ x → P y := by
 
   -- | _, Zero, _ => P_lt Zero (λ b b_lt => (not_lt_zero b b_lt).elim)
   -- | Zero, y, h => by
@@ -664,21 +663,62 @@ universe u
   --   | [] => by simp at *
   --   | [x] => by simp at *
 
-  -- intros x
-  -- induction x with
-  -- | Zero =>
-  --   intros y yh
-  --   rw [le_iff_lt_or_eq] at yh
-  --   cases yh with
-  --   | inl h => exfalso; apply not_lt_zero _ h
-  --   | inr h => 
-  --     cases h
-  --     apply strong_induction_aux _ P_lt
-  --     apply zero_le Zero
-  -- | Limit elems elems_ih =>
-  --   intros y yh
-  --   have ⟨l, ⟨l_head, l_tail⟩, l_chain⟩ := yh
-  --   cases l with
-  --   | nil => simp at *
-  --   | cons x xs =>
-  --     cases l with
+  intros x
+  induction x with
+  | Zero =>
+    intros y yh
+    rw [le_iff_lt_or_eq] at yh
+    cases yh with
+    | inl h => exfalso; apply not_lt_zero _ h
+    | inr h => 
+      cases h
+      apply P_lt
+      intros b b_lt_zero
+      exfalso
+      apply not_lt_zero b b_lt_zero
+  | Limit elems elems_ih =>
+    intros y yh
+    rw [le_iff_lt_or_eq] at yh
+    cases yh
+    case inr y_eq =>
+      cases y_eq
+      apply P_lt
+      intros b bh
+      have ⟨b_list, ⟨b_head, b_tail⟩, b_chain, b_length⟩ := bh
+      match b_list with
+      | [] => simp at *
+      | [_] => simp at *
+      | _::bs::bss => 
+        simp at *
+        cases b_head
+        clear b_length; case refl =>
+        have ⟨n, nh⟩ : mem bs (Limit elems) := b_chain 0 (Limit elems) bs rfl rfl
+        apply elems_ih n b
+        exists (bs :: bss)
+        constructor
+        constructor
+        simp; exact nh
+        exact b_tail
+        apply isChain_down _ _ b_chain
+    case inl y_lt =>
+      have ⟨y_list, ⟨y_head, y_tail⟩, y_chain, y_length⟩ := y_lt
+      match y_list with
+      | [] => simp at *
+      | [_] => simp at *
+      | _::ys::yss => 
+        simp at *
+        cases y_head; case refl =>
+        clear y_length
+        have ⟨n, nh⟩ : mem ys (Limit elems) := y_chain 0 (Limit elems) ys rfl rfl
+        cases nh; case refl =>
+        apply elems_ih n; case a =>
+        exists (elems n :: yss)
+        repeat constructor
+        exact y_tail
+        apply isChain_down _ _ y_chain
+
+      
+
+      
+
+
