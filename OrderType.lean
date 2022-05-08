@@ -84,15 +84,6 @@ def order_equiv.from_strict (a b : Box)
         apply Or.inr rfl
   }
 
-def order_equiv.le_antisymm (ab : Box.le a b) (ba : Box.le b a) : order_equiv a b := by
-  apply order_equiv.from_strict
-  case f => exact ab.f
-  case g => exact ba.f
-  case f_strict_mono => exact ab.f_strict_mono
-  case g_strict_mono => exact ba.f_strict_mono
-  case f_of_g =>
-    
-
 infix:50 " ≅ " => order_equiv  
 
 def order_equiv.refl : a ≅ a where
@@ -702,6 +693,24 @@ def Box.mul_zero : Box.mul ⟨τ, ord⟩ ⟨Empty, empty_WellOrder⟩ ≅ ⟨Emp
   case g_of_f => exact λ x => x.2.elim
   case g_mono => exact λ x => x.elim
   case f_of_g => exact λ x => x.elim
+
+instance Subtype.WellOrder [woa : WellOrder α] (f : α → Prop) : WellOrder {x : α // f x} where
+  le := λ x y => x.val ≤ y.val
+  le_refl := λ x => woa.le_refl x.val
+  le_trans := λ x y z xy yz => woa.le_trans x.val y.val z.val xy yz
+  lt := λ x y => x.val < y.val
+  lt_iff_le_not_le := λ x y => woa.lt_iff_le_not_le x.val y.val
+  le_antisymm := λ x y xy yx => Subtype.eq $ _
+  le_total := λ x y => woa.le_total x.val y.val
+  decidable_le := λ x y => woa.decidable_le x.val y.val
+  getMin := λ isDec P y Py => 
+    have : isDec (λ a => ∃ s : {x : α // f a}, P x ∧ x.val = a) := 
+
+def restriction {a : Box} (f : a.1 → Prop) : Box :=
+  ⟨{x : a // f x}, 
+
+def order_equiv.le_antisymm (ab : Box.le a b) (ba : Box.le b a) : order_equiv a b := by
+  apply order_equiv.trans (_ : a)
 
 namespace Ordinal
 
