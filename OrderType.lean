@@ -25,7 +25,7 @@ inductive Squash' (α : Type u) : Prop
   | intro : α → Squash' α
 
 class WellOrder (α : Type u) extends LinearOrder α where
-  getMin : (∀ Q, Decidable Q) → ∀ (P : α → Prop) a, P a → ∃ b, P b ∧ ∀ c, P c → b ≤ c
+  getMin : (∀ Q, Decidable Q) → ∀ (P : α → Prop) a, P a → ∃ b, P b ∧ ∀ c, P c → b ≤ c 
 
 structure Box  where
   carrier : Type u
@@ -40,8 +40,32 @@ instance (b : Box) : WellOrder b := b.order
 
 structure Box.le (a b : Box) :=
   (f : a → b)
-  (f_strict_mono : ∀ x y : a, x < y → f x < f y)
+  (f_strict_mono : ∀ {x y : a}, x < y → f x < f y)
   (injective_f : Function.injective f)
+
+lemma Box.le_refl (a : Box) : Box.le a a where
+  f := id
+  f_strict_mono := id
+  injective_f := λ x y => id
+
+lemma Box.le_trans (a b c: Box) (ab : Box.le a b) (bc : Box.le b c) : Box.le a c where
+  f := bc.f ∘ ab.f
+  f_strict_mono := λ xy => bc.f_strict_mono (ab.f_strict_mono xy)
+  injective_f := λ x y h => ab.injective_f (bc.injective_f h)
+
+instance : LE Box where 
+  le := λ x y => ∃ _ : Box.le x y, True
+instance : LT Box where
+  lt := λ x y => x ≤ y ∧ ¬ y ≤ x
+
+instance : Preorder Box where
+  le_refl := λ x => ⟨Box.le_refl x, ⟨⟩⟩
+  le_trans := λ a b c ab bc =>
+    by
+    cases ab; case intro ab _ =>
+    cases bc; case intro bc _ =>
+    exists Box.le_trans a b c ab bc
+  lt_iff_le_not_le := λ a b => by simp [LT.lt]
 
 structure order_equiv (a b : Box) where
   f : a → b
@@ -694,23 +718,55 @@ def Box.mul_zero : Box.mul ⟨τ, ord⟩ ⟨Empty, empty_WellOrder⟩ ≅ ⟨Emp
   case g_mono => exact λ x => x.elim
   case f_of_g => exact λ x => x.elim
 
+instance WellOrder.strong_rec [WellOrder α] (β : α → Type u) (LEM : ∀ Q, Decidable Q) :
+  (∀ a : α, (∀ b : α, b < a → β b) → β a) → ∀ a, β a :=
+  by
+  intros H
+  intros a
+  
+
+def Subtype.WellOrder_aux (f : α → Prop) (P : {x // f x} → Prop) : α → Prop := λ a => ∃ x, ∃ (h : f x), (P ⟨x, h⟩ ∧ x = a)
+
 instance Subtype.WellOrder [woa : WellOrder α] (f : α → Prop) : WellOrder {x : α // f x} where
   le := λ x y => x.val ≤ y.val
   le_refl := λ x => woa.le_refl x.val
   le_trans := λ x y z xy yz => woa.le_trans x.val y.val z.val xy yz
   lt := λ x y => x.val < y.val
   lt_iff_le_not_le := λ x y => woa.lt_iff_le_not_le x.val y.val
-  le_antisymm := λ x y xy yx => Subtype.eq $ _
+  le_antisymm := λ x y xy yx => Subtype.eq $ 
+    by
+    have ⟨x, xh⟩ := x
+    have ⟨y, yh⟩ := y
+    simp at *
+    apply woa.le_antisymm x y xy yx
   le_total := λ x y => woa.le_total x.val y.val
   decidable_le := λ x y => woa.decidable_le x.val y.val
-  getMin := λ isDec P y Py => 
-    have : isDec (λ a => ∃ s : {x : α // f a}, P x ∧ x.val = a) := 
-
-def restriction {a : Box} (f : a.1 → Prop) : Box :=
-  ⟨{x : a // f x}, 
+  getMin := λ LEM P y Py => 
+    have P'y : Subtype.WellOrder_aux f P y := by
+      exists y
+      exists y.prop
+    have ⟨b, P'b, bh⟩ := woa.getMin LEM (Subtype.WellOrder_aux f P) y P'y
+    by
+    rw [Subtype.WellOrder_aux] at P'b
+    have ⟨b', fb', Pb, b'_eq⟩ := P'b
+    cases b'_eq; case refl =>
+    exists ⟨b, fb'⟩
+    apply And.intro Pb
+    intros c Pc
+    have ⟨c, fc⟩ := c
+    have : b ≤ c := by
+      apply bh c
+      exists c
+      exists fc
+    apply this
 
 def order_equiv.le_antisymm (ab : Box.le a b) (ba : Box.le b a) : order_equiv a b := by
-  apply order_equiv.trans (_ : a)
+  apply order_equiv.from_strict
+  case f => exact ab.f
+  case g => exact ba.f
+  case f_strict_mono => exact ab.f_strict_mono
+  case g_strict_mono => exact ba.f_strict_mono
+  case f_of_g => 
 
 namespace Ordinal
 
