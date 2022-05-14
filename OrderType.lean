@@ -17,7 +17,6 @@ lemma lt_iff_le_and_ne [LinearOrder α] {x y : α} : x < y ↔ x ≤ y ∧ x ≠
       | Or.inl h => h
       | Or.inr h => (x_ne_y h).elim
   }
-  
 
 universe u v
 
@@ -25,7 +24,30 @@ inductive Squash' (α : Type u) : Prop
   | intro : α → Squash' α
 
 class WellOrder (α : Type u) extends LinearOrder α where
-  getMin : (∀ Q, Decidable Q) → ∀ (P : α → Prop) a, P a → ∃ b, P b ∧ ∀ c, P c → b ≤ c 
+  ind₁ : ∀ (P : α → Prop) (indStep : ∀ a : α, (∀ b : α, b < a → P b) → P a) a, P a
+  recOn₁ : ∀ a (P : α → Type v) (indStep : ∀ a : α, (∀ b : α, b < a → P b) → P a), P a
+
+lemma indOn₁ {α} [WellOrder α] a {P : α → Prop} 
+  (indStep : ∀ a : α, (∀ b : α, b < a → P b) → P a)
+  : P a := WellOrder.ind₁ P indStep a
+
+def descendingChainCondition_motive (α : Type u) [Preorder α] (a : α) := 
+  ∀ (f : ℕ → α), a = f 0 → ¬ ∀ ix, f ix > f (ix + 1)
+
+def descendingChainCondition (f : ℕ → α) [WellOrder α] : ¬ ∀ ix, f ix > f (ix + 1) :=
+  have h := WellOrder.ind₁ (descendingChainCondition_motive α)
+  by
+  apply h _ (f 0) f rfl
+  clear h f
+  simp [descendingChainCondition_motive]
+  intros a a_ih f a_eq_f0
+  by_cases (f 0 ≤ f 1)
+  case pos => exists 0
+  case neg =>
+    cases a_eq_f0; case refl =>
+    rw [← lt_iff_not_ge] at h
+    have ⟨ix, ix_h⟩ := a_ih (f 1) h (λ x => f (x + 1)) rfl
+    exists (ix + 1)
 
 structure Box  where
   carrier : Type u
@@ -194,7 +216,8 @@ instance empty_WellOrder : WellOrder Empty where
   lt_iff_le_not_le := by intros a; cases a
   le_total := by intros a; cases a
   decidable_le := by intros a; cases a
-  getMin := by intros _ _ a; cases a
+  ind₁ := by intros _ _ a; cases a
+  recOn₁ := by intros a; cases a
 
 instance unit_WellOrder : WellOrder Unit where
   le := λ _ _ => True
@@ -205,9 +228,10 @@ instance unit_WellOrder : WellOrder Unit where
   lt_iff_le_not_le := λ () () => {mp := λ p => p.elim, mpr := λ ⟨xy, yx⟩ => (yx xy).elim}
   le_total := λ _ _ => Or.inl True.intro
   decidable_le := λ _ _ => isTrue True.intro
-  getMin := λ LEM P a Pa => 
-    match a with
-    | () => ⟨(), Pa, λ c Pc => True.intro⟩
+  ind₁ := λ P step () => step () (λ b b_lt => b_lt.elim)
+  recOn₁ := λ () P step => step () (λ b b_lt => b_lt.elim)
+
+
 
 instance : OfNat Ordinal 1 where
   ofNat := Ordinal.mk ⟨Unit, unit_WellOrder⟩
@@ -718,13 +742,6 @@ def Box.mul_zero : Box.mul ⟨τ, ord⟩ ⟨Empty, empty_WellOrder⟩ ≅ ⟨Emp
   case g_mono => exact λ x => x.elim
   case f_of_g => exact λ x => x.elim
 
-instance WellOrder.strong_rec [WellOrder α] (β : α → Type u) (LEM : ∀ Q, Decidable Q) :
-  (∀ a : α, (∀ b : α, b < a → β b) → β a) → ∀ a, β a :=
-  by
-  intros H
-  intros a
-  
-
 def Subtype.WellOrder_aux (f : α → Prop) (P : {x // f x} → Prop) : α → Prop := λ a => ∃ x, ∃ (h : f x), (P ⟨x, h⟩ ∧ x = a)
 
 instance Subtype.WellOrder [woa : WellOrder α] (f : α → Prop) : WellOrder {x : α // f x} where
@@ -742,7 +759,7 @@ instance Subtype.WellOrder [woa : WellOrder α] (f : α → Prop) : WellOrder {x
   le_total := λ x y => woa.le_total x.val y.val
   decidable_le := λ x y => woa.decidable_le x.val y.val
   getMin := λ LEM P y Py => 
-    have P'y : Subtype.WellOrder_aux f P y := by
+    have P'y : Subtype.WellOrder_aux f P ↑y := by
       exists y
       exists y.prop
     have ⟨b, P'b, bh⟩ := woa.getMin LEM (Subtype.WellOrder_aux f P) y P'y
@@ -759,6 +776,8 @@ instance Subtype.WellOrder [woa : WellOrder α] (f : α → Prop) : WellOrder {x
       exists c
       exists fc
     apply this
+
+def asInitial (ab : Box.le a b) : a → b
 
 def order_equiv.le_antisymm (ab : Box.le a b) (ba : Box.le b a) : order_equiv a b := by
   apply order_equiv.from_strict
